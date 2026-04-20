@@ -17,7 +17,9 @@ import {
   Sparkles,
   MessageSquare,
   X,
-  RefreshCw
+  RefreshCw,
+  Settings,
+  MoreVertical
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import Markdown from 'react-markdown';
@@ -26,7 +28,7 @@ import { GoogleGenAI, Type } from '@google/genai';
 import { cn } from './lib/utils';
 
 // --- Constants & Types ---
-const GEO_URL = "https://raw.githubusercontent.com/superpikar/indonesia-geojson/master/indonesia.json";
+const GEO_URL = "https://code.highcharts.com/mapdata/countries/id/id-all.topo.json";
 
 interface RegionalData {
   province: string;
@@ -54,6 +56,7 @@ const MOCK_REGIONS: Record<string, Partial<RegionalData>> = {
 };
 
 export default function App() {
+  // --- Component State ---
   const [selectedRegion, setSelectedRegion] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [aiData, setAiData] = useState<RegionalData | null>(null);
@@ -61,37 +64,80 @@ export default function App() {
   const [chatInput, setChatInput] = useState("");
   const [chatHistory, setChatHistory] = useState<{ role: 'user' | 'ai'; text: string }[]>([]);
   const [isChatLoading, setIsChatLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState('Network Map');
+  const [mapMode, setMapMode] = useState('SDM MAP');
 
-  // --- AI Setup ---
+  // --- Settings & Sidebar Resize ---
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [localApiKey, setLocalApiKey] = useState("");
+  const availableModels = [
+    'gemini-1.5-flash',
+    'gemini-1.5-pro',
+    'gemini-2.0-flash',
+    'gemini-3.1-flash-lite-preview'
+  ];
+  const [selectedModel, setSelectedModel] = useState(availableModels[0]);
+  const [sidebarWidth, setSidebarWidth] = useState(256); // 256px
+  const [isResizing, setIsResizing] = useState(false);
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isResizing) return;
+      setSidebarWidth(Math.max(160, Math.min(e.clientX, 600)));
+    };
+    const handleMouseUp = () => setIsResizing(false);
+    
+    if (isResizing) {
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+    }
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isResizing]);
+
   const GEMINI_KEY = (import.meta as any).env.VITE_GEMINI_API_KEY;
-  const ai = useMemo(() => new GoogleGenAI({ apiKey: GEMINI_KEY || 'N/A' }), [GEMINI_KEY]);
+  const activeApiKey = localApiKey || GEMINI_KEY;
+  const ai = useMemo(() => new GoogleGenAI({ apiKey: activeApiKey || 'N/A' }), [activeApiKey]);
 
   const fetchRegionalInfo = async (provinceName: string) => {
-    if (!GEMINI_KEY || GEMINI_KEY === 'N/A') {
-      console.warn("Gemini API key is not configured.");
-      setIsSidebarOpen(true);
-      return;
-    }
-    
     setIsLoading(true);
     setAiData(null);
     setIsSidebarOpen(true);
 
+    if (!activeApiKey || activeApiKey === 'N/A') {
+      console.warn("Gemini API key is not configured.");
+      setAiData({
+        province: provinceName,
+        budget: "Akses Dibatasi",
+        population: "Akses Dibatasi",
+        growth: "Akses Dibatasi",
+        policies: ["Harap atur API Key di Pengaturan (Bawah Kiri)"],
+        summary: "Sistem membutuhkan API Key Gemini yang valid untuk beroperasi penuh."
+      });
+      setIsLoading(false);
+      return;
+    }
+
     try {
-      const model = ai.getGenerativeModel({ model: 'gemini-1.5-flash' });
+      const prompt = `Cari dan analisis data kebijakan pemerintah, anggaran (APBD), dan peraturan terbaru untuk provinsi "${provinceName}" di Indonesia.
+      Kembalikan data HANYA dalam format JSON valid yang berisi:
+      {
+        "province": "Nama provinsi",
+        "budget": "Estimasi total APBD terbaru",
+        "population": "Estimasi populasi",
+        "growth": "Pertumbuhan ekonomi",
+        "policies": ["Kebijakan 1", "Kebijakan 2", "Kebijakan 3"],
+        "summary": "Ringkasan singkat (1-2 paragraf) tentang fokus pembangunan di wilayah ini."
+      }`;
 
-      const prompt = `Cari dan analisis data kebijakan pemerintah, anggaran (APBD), dan peraturan terbaru untuk provinsi "${provinceName}" di Indonesia tahun 2024-2025.
-      Sumber harus dipercaya. Kembalikan data dalam format JSON yang berisi:
-      - province: Nama provinsi
-      - budget: Estimasi total APBD terbaru
-      - population: Estimasi populasi
-      - growth: Pertumbuhan ekonomi
-      - policies: Daftar 3-5 kebijakan strategis utama saat ini
-      - summary: Ringkasan singkat (1-2 paragraf) tentang fokus pembangunan di wilayah ini.`;
-
-      const result = await model.generateContent(prompt);
-      const text = result.response.text();
-      // Clean possible markdown backticks
+      const result = await ai.models.generateContent({
+        model: selectedModel,
+        contents: prompt
+      });
+      
+      const text = result.text || "";
       const cleanJson = text.replace(/```json|```/g, "").trim();
       const data = JSON.parse(cleanJson);
       
@@ -106,7 +152,7 @@ export default function App() {
         population: "Akses terbatas",
         growth: "Stabil",
         policies: ["Pembangunan Infrastruktur", "Digitalisasi Layanan"],
-        summary: "Maaf, sistem AI sedang mengalami gangguan saat mengambil data detail. Namun, Anda dapat melihat peta interaktif di layar utama."
+        summary: "Gagal menyambung ke server AI. Memuat data fallback dari memori lokal sementara koneksi pulih."
       });
     } finally {
       setIsLoading(false);
@@ -115,7 +161,12 @@ export default function App() {
 
   const handleChatSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!chatInput.trim() || !GEMINI_KEY || GEMINI_KEY === 'N/A') return;
+    if (!chatInput.trim()) return;
+
+    if (!activeApiKey || activeApiKey === 'N/A') {
+      setChatHistory(prev => [...prev, { role: 'ai', text: "Mohon atur GEMINI API KEY di Pengaturan (Bawah Kiri) untuk menggunakan asisten AI." }]);
+      return;
+    }
 
     const userText = chatInput;
     setChatInput("");
@@ -123,14 +174,19 @@ export default function App() {
     setIsChatLoading(true);
 
     try {
-      const model = ai.getGenerativeModel({ model: 'gemini-1.5-flash' });
-      const prompt = `Kamu adalah asisten ahli DATA SDM INDONESIA. Pengguna bertanya tentang: "${userText}" 
-      terkait wilayah "${selectedRegion || 'Indonesia'}". Berikan jawaban yang akurat berdasarkan data kebijakan publik dan SDM terbaru.`;
+      // Allow general conversation but specialized in Indonesia Data if unspecified. Translation explicitly supported.
+      const prompt = `Kamu adalah asisten cerdas yang berfungsi dalam Sistem DATA SDM INDONESIA. Pengguna bertanya tentang: "${userText}". 
+      Konteks wilayah saat ini: "${selectedRegion || 'Indonesia'}". 
+      Tugas utama Anda meriset kebijakan dan SDM, namun jika user meminta terjemahan/hal lain, penuhi dengan akurat.`;
 
-      const result = await model.generateContent(prompt);
-      setChatHistory(prev => [...prev, { role: 'ai', text: result.response.text() }]);
+      const result = await ai.models.generateContent({
+        model: selectedModel,
+        contents: prompt
+      });
+      
+      setChatHistory(prev => [...prev, { role: 'ai', text: result.text || "Saya tidak yakin." }]);
     } catch (e) {
-      setChatHistory(prev => [...prev, { role: 'ai', text: "Terjadi kesalahan koneksi ke AI." }]);
+      setChatHistory(prev => [...prev, { role: 'ai', text: "Terjadi kesalahan koneksi ke backend AI." }]);
     } finally {
       setIsChatLoading(false);
     }
@@ -144,30 +200,53 @@ export default function App() {
   return (
     <div className="fixed inset-0 flex bg-[#050505] text-zinc-300 font-sans overflow-hidden">
       
-      {/* 1. Sidebar - Fixed on the left */}
-      <aside className="relative flex-none w-16 md:w-64 border-r border-white/5 bg-zinc-900/90 flex flex-col py-6 px-4 z-[100]">
-        <div className="flex items-center gap-3 mb-10 px-2 shrink-0">
+      {/* 1. Sidebar - Resizable on the left */}
+      <aside 
+        style={{ width: `${sidebarWidth}px` }}
+        className="relative flex-none border-r border-white/5 bg-zinc-900/90 flex flex-col py-6 px-4 z-[100] transition-[width] duration-0"
+      >
+        <div className="flex items-center gap-3 mb-10 px-2 shrink-0 truncate">
           <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center shrink-0 shadow-lg shadow-indigo-600/20">
             <LayoutDashboard className="w-5 h-5 text-white" />
           </div>
-          <span className="hidden md:block font-black text-white text-sm uppercase tracking-tighter">DATA SDM ID</span>
+          <span className="font-black text-white text-sm uppercase tracking-tighter truncate">DATA SDM ID</span>
         </div>
 
-        <nav className="flex-1 space-y-1">
-          <NavItem icon={<Globe className="w-4 h-4" />} label="Network Map" active />
-          <NavItem icon={<FileText className="w-4 h-4" />} label="Archive" />
-          <NavItem icon={<TrendingUp className="w-4 h-4" />} label="Analytics" />
-          <NavItem icon={<Shield className="w-4 h-4" />} label="Regulation" />
+        <nav className="flex-1 space-y-1 overflow-y-auto overflow-x-hidden">
+          <NavItem icon={<Globe className="w-5 h-5" />} label="Network Map" active={activeTab === 'Network Map'} onClick={() => setActiveTab('Network Map')} />
+          <NavItem icon={<FileText className="w-5 h-5" />} label="Archive" active={activeTab === 'Archive'} onClick={() => setActiveTab('Archive')} />
+          <NavItem icon={<TrendingUp className="w-5 h-5" />} label="Analytics" active={activeTab === 'Analytics'} onClick={() => setActiveTab('Analytics')} />
+          <NavItem icon={<Shield className="w-5 h-5" />} label="Regulation" active={activeTab === 'Regulation'} onClick={() => setActiveTab('Regulation')} />
         </nav>
         
-        <div className="mt-auto px-2">
-          <div className="p-3 bg-white/5 rounded-xl border border-white/5">
+        <div className="mt-auto px-2 pt-6">
+          <button 
+            onClick={() => setIsSettingsOpen(true)}
+            className="flex items-center gap-2 mb-3 text-zinc-400 hover:text-white transition-colors w-full cursor-pointer hover:bg-white/5 p-2 rounded-lg"
+          >
+            <Settings className="w-5 h-5" />
+            <span className="text-xs font-semibold uppercase tracking-widest truncate">Pengaturan AI</span>
+          </button>
+          
+          <div className="p-3 bg-white/5 rounded-xl border border-white/5 truncate">
             <div className="flex items-center gap-2 mb-2">
-              <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span className="text-[9px] font-bold text-emerald-400">GEMINI ACTIVE</span>
+              <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+              <span className="text-[9px] font-bold text-emerald-400 truncate tracking-widest uppercase">GEMINI: {selectedModel.split('-')[1]}</span>
             </div>
-            <p className="hidden md:block text-[8px] text-zinc-500 font-mono tracking-tighter">v4.5.2 Operational</p>
+            <p className="text-[8px] text-zinc-500 font-mono tracking-tighter truncate">v4.5.2 Operational</p>
           </div>
+        </div>
+        
+        {/* Resize Handle */}
+        <div 
+          onMouseDown={(e) => { e.preventDefault(); setIsResizing(true); }}
+          className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-indigo-500/50 active:bg-indigo-500 transition-colors z-50 group"
+        >
+           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 h-8 flex flex-col justify-between">
+              <div className="w-0.5 h-1 bg-white/50 rounded-full" />
+              <div className="w-0.5 h-1 bg-white/50 rounded-full" />
+              <div className="w-0.5 h-1 bg-white/50 rounded-full" />
+           </div>
         </div>
       </aside>
 
@@ -213,8 +292,8 @@ export default function App() {
               >
                 <Geographies geography={GEO_URL}>
                   {({ geographies, error }) => {
-                    if (error) return <text x="118" y="-2" fill="red" fontSize="20" textAnchor="middle">Map Load Error</text>;
-                    if (!geographies || geographies.length === 0) return <text x="118" y="-2" fill="#444" textAnchor="middle" className="animate-pulse">Loading Map...</text>;
+                    if (error) return <text x="50%" y="50%" fill="red" fontSize="20" textAnchor="middle">Map Load Error</text>;
+                    if (!geographies || geographies.length === 0) return <text x="50%" y="50%" fill="#fff" fontSize="20" textAnchor="middle" className="animate-pulse">Loading Map...</text>;
                     
                     return geographies.map((geo) => {
                       const name = geo.properties.name || geo.properties.NAME_1 || geo.properties.state || geo.properties.PROP || "Unknown";
@@ -258,9 +337,9 @@ export default function App() {
 
            {/* Overlay HUD controls */}
            <div className="absolute bottom-6 left-6 z-40 flex flex-col gap-2">
-             <MapBtn label="Satellite" />
-             <MapBtn label="SDM Map" />
-             <MapBtn label="Policy" />
+             <MapBtn label="Satellite" active={mapMode === 'SATELLITE'} onClick={() => setMapMode('SATELLITE')} />
+             <MapBtn label="SDM Map" active={mapMode === 'SDM MAP'} onClick={() => setMapMode('SDM MAP')} />
+             <MapBtn label="Policy" active={mapMode === 'POLICY'} onClick={() => setMapMode('POLICY')} />
            </div>
 
            <div className="absolute top-6 right-6 z-40">
@@ -389,21 +468,93 @@ export default function App() {
           </>
         )}
       </AnimatePresence>
+
+      {/* Settings Modal */}
+      <AnimatePresence>
+        {isSettingsOpen && (
+          <div className="fixed inset-0 z-[999] flex items-center justify-center p-4">
+             <motion.div 
+               initial={{ opacity: 0 }} 
+               animate={{ opacity: 1 }} 
+               exit={{ opacity: 0 }}
+               onClick={() => setIsSettingsOpen(false)}
+               className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+             />
+             <motion.div 
+               initial={{ opacity: 0, scale: 0.95, y: 20 }}
+               animate={{ opacity: 1, scale: 1, y: 0 }}
+               exit={{ opacity: 0, scale: 0.95, y: 20 }}
+               className="relative w-full max-w-md bg-zinc-900 border border-white/10 shadow-2xl rounded-2xl overflow-hidden"
+             >
+                <div className="p-6 border-b border-white/5 flex items-center justify-between">
+                  <h3 className="text-lg font-bold text-white uppercase tracking-widest">AI Settings</h3>
+                  <button onClick={() => setIsSettingsOpen(false)} className="text-zinc-400 hover:text-white transition-colors cursor-pointer p-1 rounded-lg hover:bg-white/10"><X className="w-5 h-5"/></button>
+                </div>
+                
+                <div className="p-6 space-y-6">
+                  <div className="space-y-3">
+                    <label className="block text-xs font-bold text-zinc-400 uppercase tracking-widest">
+                      Gemini API Key
+                    </label>
+                    <input 
+                      type="password"
+                      placeholder={GEMINI_KEY && GEMINI_KEY !== 'N/A' ? "Using preset VITE_GEMINI_API_KEY" : "Enter your AI Studio API Key..."}
+                      value={localApiKey}
+                      onChange={(e) => setLocalApiKey(e.target.value)}
+                      className="w-full bg-zinc-950 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-mono"
+                    />
+                    <p className="text-[10px] text-zinc-500">Leave blank to use environment variable default.</p>
+                  </div>
+
+                  <div className="space-y-3">
+                    <label className="block text-xs font-bold text-zinc-400 uppercase tracking-widest">
+                      AI Generation Model
+                    </label>
+                    <div className="relative">
+                      <select 
+                        value={selectedModel}
+                        onChange={(e) => setSelectedModel(e.target.value)}
+                        className="w-full bg-zinc-950 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all appearance-none cursor-pointer"
+                      >
+                        {availableModels.map(m => (
+                          <option key={m} value={m}>{m}</option>
+                        ))}
+                      </select>
+                      <ChevronRight className="w-4 h-4 absolute right-4 top-1/2 -translate-y-1/2 text-zinc-500 pointer-events-none rotate-90" />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-4 bg-zinc-950/50 border-t border-white/5 flex justify-end">
+                  <button 
+                    onClick={() => setIsSettingsOpen(false)}
+                    className="px-6 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl transition-all cursor-pointer uppercase tracking-widest shadow-lg shadow-indigo-600/20"
+                  >
+                    Simpan
+                  </button>
+                </div>
+             </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
     </div>
   );
 }
 
 // --- Helper Components ---
 
-function NavItem({ icon, label, active = false }: { icon: React.ReactNode, label: string, active?: boolean }) {
+function NavItem({ icon, label, active = false, onClick }: { icon: React.ReactNode, label: string, active?: boolean, onClick?: () => void }) {
   return (
-    <div className={cn(
-      "flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-all group cursor-pointer",
-      active ? "bg-white/5 text-white" : "text-zinc-500 hover:bg-white/5 hover:text-zinc-300"
+    <div 
+      onClick={onClick}
+      className={cn(
+      "flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-medium transition-all group cursor-pointer",
+      active ? "bg-white/10 text-white shadow-sm" : "text-zinc-500 hover:bg-white/5 hover:text-zinc-300"
     )}>
-      {icon}
-      <span className="hidden md:inline">{label}</span>
-      {active && <div className="ml-auto w-1 h-1 rounded-full bg-indigo-500" />}
+      <div className={cn("shrink-0", active ? "text-indigo-400" : "")}>{icon}</div>
+      <span className="truncate">{label}</span>
+      {active && <div className="ml-auto shrink-0 w-1.5 h-1.5 rounded-full bg-indigo-500" />}
     </div>
   );
 }
@@ -434,10 +585,12 @@ function StatBox({ label, value }: { label: string, value: string }) {
   );
 }
 
-function MapBtn({ label, active = false }: { label: string, active?: boolean }) {
+function MapBtn({ label, active = false, onClick }: { label: string, active?: boolean, onClick?: () => void }) {
   return (
-    <button className={cn(
-      "px-4 py-2 border rounded-xl text-[10px] font-black transition-all uppercase tracking-widest shadow-xl cursor-pointer",
+    <button 
+      onClick={onClick}
+      className={cn(
+      "px-4 py-3 md:py-2 border rounded-xl text-[10px] font-black transition-all uppercase tracking-widest shadow-xl cursor-pointer active:scale-95",
       active 
         ? "bg-indigo-600 border-indigo-500 text-white shadow-indigo-600/20" 
         : "bg-zinc-950/95 border-white/10 text-zinc-500 hover:text-white hover:bg-zinc-900"
