@@ -1,17 +1,9 @@
-name = "api-sentinel-ai"
+name = "data-sdm-indonesia"
 main = "worker/index.ts"
 compatibility_date = "2024-03-20"
 
 # Serve static assets from the React build directory
 assets = { directory = "dist" }
-
-# KV Namespace for storing AI Gateway URLs
-# You need to create this in Cloudflare dashboard or via CLI:
-# npx wrangler kv:namespace create "vpsai"
-# Then replace the ID below with the generated ID.
-[[kv_namespaces]]
-binding = "vpsai"
-id = "REPLACE_WITH_YOUR_KV_NAMESPACE_ID"
 
 [vars]
 # Add your Gemini API Key here or via Cloudflare Dashboard Secrets
