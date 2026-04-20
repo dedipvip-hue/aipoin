@@ -24,7 +24,8 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import Markdown from 'react-markdown';
-import { ComposableMap, Geographies, Geography, ZoomableGroup } from 'react-simple-maps';
+import 'leaflet/dist/leaflet.css';
+import { MapContainer, TileLayer, GeoJSON } from 'react-leaflet';
 import { GoogleGenAI, Type } from '@google/genai';
 import { cn } from './lib/utils';
 
@@ -82,6 +83,14 @@ export default function App() {
   const [selectedModel, setSelectedModel] = useState(availableModels[0]);
   const [sidebarWidth, setSidebarWidth] = useState(256); // 256px
   const [isResizing, setIsResizing] = useState(false);
+  const [geoJsonData, setGeoJsonData] = useState<any>(null);
+
+  useEffect(() => {
+    fetch('/indonesia-map.json')
+      .then(res => res.json())
+      .then(data => setGeoJsonData(data))
+      .catch(err => console.error("Failed to load map data", err));
+  }, []);
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
@@ -307,71 +316,62 @@ export default function App() {
            </div>
 
            {/* Map Interaction Area */}
-           <div className="flex-1 w-full h-full relative">
-            <ComposableMap
-              projection="geoMercator"
-              projectionConfig={{
-                scale: 1200,
-                center: [118, -2]
-              }}
-              className="w-full h-full pointer-events-auto"
-            >
-              <ZoomableGroup 
-                center={[118, -2]} 
-                zoom={1} 
-                maxZoom={8}
-                onMoveStart={(e) => {
-                   // Ensure clicks still work by checking if it's a drag
-                }}
-              >
-                <Geographies geography={GEO_URL}>
-                  {({ geographies, error }) => {
-                    if (error) return <text x="50%" y="50%" fill="red" fontSize="20" textAnchor="middle">Map Load Error</text>;
-                    if (!geographies || geographies.length === 0) return <text x="50%" y="50%" fill="#fff" fontSize="20" textAnchor="middle" className="animate-pulse">Loading Map...</text>;
-                    
-                    return geographies.map((geo) => {
-                      // Extract name from this specific GeoJSON format
-                      const name = geo.properties.Propinsi || geo.properties.name || geo.properties.NAME_1 || geo.properties.state || "Unknown";
-                      
-                      // Title case it to match our mock data nicely (e.g. "Jawa Barat" instead of "JAWA BARAT")
-                      const formattedName = name.toLowerCase().split(' ').map((word: string) => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
-                      
-                      const isSelected = selectedRegion === formattedName || selectedRegion === name;
-                      
-                      return (
-                        <Geography
-                          key={geo.rsmKey}
-                          geography={geo}
-                          onClick={() => {
-                            console.log("Clicked:", formattedName);
-                            onRegionClick(formattedName);
-                          }}
-                          style={{
-                            default: {
-                              fill: isSelected ? "#ef4444" : "#27272a", // Red if selected, dark zinc default for contrast with gradient
-                              stroke: "#ef4444",
-                              strokeWidth: 0.5,
-                              outline: "none"
-                            },
-                            hover: {
-                              fill: "#fca5a5", // Lighter red on hover
-                              stroke: "#ef4444",
-                              strokeWidth: 1.5,
-                              outline: "none",
-                              cursor: "pointer"
-                            },
-                            pressed: {
-                              fill: "#dc2626", // Darker red on press
-                              outline: "none"
-                            }
-                          }}
-                        />
-                      );
-                    });
-                  }}
-                </Geographies>
-              </ZoomableGroup>
-            </ComposableMap>
+           <div className="flex-1 w-full h-full relative z-0">
+             <MapContainer 
+               center={[-2, 118]} 
+               zoom={5} 
+               style={{ height: '100%', width: '100%', backgroundColor: 'transparent' }} 
+               zoomControl={false}
+             >
+               <TileLayer
+                 url="https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png"
+                 attribution='&copy; <a href="https://carto.com/">CartoDB</a>'
+               />
+               {geoJsonData && (
+                 <GeoJSON
+                   data={geoJsonData}
+                   style={(feature: any) => {
+                     const name = feature?.properties?.Propinsi || feature?.properties?.name || "Unknown";
+                     const formattedName = name.toLowerCase().split(' ').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+                     const isSelected = selectedRegion === formattedName || selectedRegion === name;
+                     
+                     return {
+                       fillColor: isSelected ? "#ef4444" : "#27272a",
+                       weight: 1,
+                       opacity: 1,
+                       color: isSelected ? "#ef4444" : "#3f3f46",
+                       fillOpacity: isSelected ? 0.8 : 0.6
+                     };
+                   }}
+                   onEachFeature={(feature: any, layer: any) => {
+                     const name = feature?.properties?.Propinsi || feature?.properties?.name || "Unknown";
+                     const formattedName = name.toLowerCase().split(' ').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+                     
+                     layer.on({
+                       mouseover: (e: any) => {
+                         const l = e.target;
+                         l.setStyle({
+                           fillOpacity: 0.9,
+                           fillColor: "#fca5a5"
+                         });
+                         l.bringToFront();
+                       },
+                       mouseout: (e: any) => {
+                         const l = e.target;
+                         const isSelected = selectedRegion === formattedName || selectedRegion === name;
+                         l.setStyle({
+                           fillOpacity: isSelected ? 0.8 : 0.6,
+                           fillColor: isSelected ? "#ef4444" : "#27272a"
+                         });
+                       },
+                       click: () => {
+                         onRegionClick(formattedName);
+                       }
+                     });
+                   }}
+                 />
+               )}
+             </MapContainer>
            </div>
 
            {/* Overlay HUD controls */}
