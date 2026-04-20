@@ -4,11 +4,23 @@ import { GoogleGenAI } from "@google/genai";
 interface Env {
   ASSETS: { fetch: (request: Request) => Promise<Response> };
   GEMINI_API_KEY: string;
+  VPSAI_BUCKET: R2Bucket;
 }
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
+
+    // AI POST /api/save-key
+    if (request.method === 'POST' && url.pathname === '/api/save-key') {
+      try {
+        const { apiKey } = await request.json() as { apiKey: string };
+        await env.VPSAI_BUCKET.put('gemini_api_key', apiKey);
+        return new Response(JSON.stringify({ status: "success" }), { headers: { 'Content-Type': 'application/json' }});
+      } catch (err: any) {
+        return new Response(JSON.stringify({ error: err.message }), { status: 500, headers: { 'Content-Type': 'application/json' }});
+      }
+    }
 
     // AI POST /api/region
     if (request.method === 'POST' && url.pathname === '/api/region') {
@@ -16,11 +28,17 @@ export default {
         const body = await request.json() as { provinceName: string };
         const { provinceName } = body;
         
-        if (!env.GEMINI_API_KEY) {
-          return new Response(JSON.stringify({ error: "API Key not found in environment." }), { status: 401, headers: { 'Content-Type': 'application/json' }});
+        let apiKey = env.GEMINI_API_KEY;
+        if (!apiKey) {
+           const obj = await env.VPSAI_BUCKET.get('gemini_api_key');
+           if (obj) apiKey = await obj.text();
         }
         
-        const ai = new GoogleGenAI({ apiKey: env.GEMINI_API_KEY });
+        if (!apiKey) {
+          return new Response(JSON.stringify({ error: "API Key not found." }), { status: 401, headers: { 'Content-Type': 'application/json' }});
+        }
+        
+        const ai = new GoogleGenAI({ apiKey });
         const prompt = `Cari dan analisis data kebijakan pemerintah, anggaran (APBD), dan peraturan terbaru untuk provinsi "${provinceName}" di Indonesia tahun 2024-2025.
         Sumber harus dipercaya. Kembalikan data dalam format JSON yang berisi:
         - province: Nama provinsi
@@ -52,11 +70,17 @@ export default {
         const body = await request.json() as { userText: string, selectedRegion: string };
         const { userText, selectedRegion } = body;
         
-        if (!env.GEMINI_API_KEY) {
-          return new Response(JSON.stringify({ error: "API Key not found in environment." }), { status: 401, headers: { 'Content-Type': 'application/json' }});
+        let apiKey = env.GEMINI_API_KEY;
+        if (!apiKey) {
+           const obj = await env.VPSAI_BUCKET.get('gemini_api_key');
+           if (obj) apiKey = await obj.text();
+        }
+
+        if (!apiKey) {
+          return new Response(JSON.stringify({ error: "API Key not found." }), { status: 401, headers: { 'Content-Type': 'application/json' }});
         }
         
-        const ai = new GoogleGenAI({ apiKey: env.GEMINI_API_KEY });
+        const ai = new GoogleGenAI({ apiKey });
         const prompt = `Kamu adalah asisten ahli DATA SDM INDONESIA. Pengguna bertanya tentang: "${userText}" 
         terkait wilayah "${selectedRegion || 'Indonesia'}". Berikan jawaban yang akurat berdasarkan data kebijakan publik dan SDM terbaru.`;
         

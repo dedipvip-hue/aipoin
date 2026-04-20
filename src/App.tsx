@@ -646,7 +646,23 @@ export default function App() {
 
                 <div className="p-4 bg-zinc-950/50 border-t border-white/5 flex justify-end">
                   <button 
-                    onClick={() => setIsSettingsOpen(false)}
+                    onClick={async () => {
+                      try {
+                        const response = await fetch('/api/save-key', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ apiKey: localApiKey })
+                        });
+                        if (response.ok) {
+                          alert("API Key berhasil disimpan di R2.");
+                          setIsSettingsOpen(false);
+                        } else {
+                          alert("Gagal menyimpan kunci.");
+                        }
+                      } catch (e) {
+                         alert("Kesalahan koneksi.");
+                      }
+                    }}
                     className="px-6 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl transition-all cursor-pointer uppercase tracking-widest shadow-lg shadow-indigo-600/20"
                   >
                     Simpan
