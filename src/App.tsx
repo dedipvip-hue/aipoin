@@ -43,6 +43,10 @@ interface RegionalData {
   growth: string;
   policies: string[];
   summary: string;
+  area: string;
+  popPercentage: string;
+  totalKab: string;
+  totalKec: string;
 }
 
 const INDONESIA_CENTER: [number, number] = [118, -2];
@@ -180,9 +184,13 @@ export default function App() {
         "province": "Nama provinsi",
         "budget": "Estimasi total APBD terbaru",
         "population": "Estimasi populasi",
+        "popPercentage": "Persentase populasi dari total Indonesia",
+        "area": "Luas wilayah",
+        "totalKab": "Total kabupaten",
+        "totalKec": "Total kecamatan",
         "growth": "Pertumbuhan ekonomi",
         "policies": ["Kebijakan 1", "Kebijakan 2", "Kebijakan 3"],
-        "summary": "Ringkasan singkat (1-2 paragraf) tentang fokus pembangunan di wilayah ini."
+        "summary": "Ringkasan fokus pembangunan (2 paragraf)"
       }`;
 
       const result = await ai.models.generateContent({
@@ -205,7 +213,11 @@ export default function App() {
         population: "Akses terbatas",
         growth: "Stabil",
         policies: ["Pembangunan Infrastruktur", "Digitalisasi Layanan"],
-        summary: "Gagal menyambung ke server AI. Memuat data fallback dari memori lokal sementara koneksi pulih."
+        summary: "Gagal menyambung ke server AI. Memuat data fallback dari memori lokal sementara koneksi pulih.",
+        area: "N/A",
+        popPercentage: "N/A",
+        totalKab: "N/A",
+        totalKec: "N/A"
       });
     } finally {
       setIsLoading(false);
@@ -228,9 +240,9 @@ export default function App() {
 
     try {
       // Allow general conversation but specialized in Indonesia Data if unspecified. Translation explicitly supported.
-      const prompt = `Kamu adalah asisten cerdas yang berfungsi dalam Sistem DATA SDM INDONESIA. Pengguna bertanya tentang: "${userText}". 
-      Konteks wilayah saat ini: "${selectedRegion || 'Indonesia'}". 
-      Tugas utama Anda meriset kebijakan dan SDM, namun jika user meminta terjemahan/hal lain, penuhi dengan akurat.`;
+        const prompt = `Kamu adalah asisten cerdas yang sangat ramah dan santai, berfungsi dalam Sistem DATA SDM INDONESIA. Pengguna bertanya tentang: "${userText}". 
+        Konteks wilayah saat ini: "${selectedRegion || 'Indonesia'}". 
+        Gunakan bahasa yang natural, tidak kaku, inspiratif, dan informatif saat menjawab. Hindari gaya bicara robotik. Jika ada data spesifik wilayah, gunakan itu sebagai acuan utama.`;
 
       const result = await ai.models.generateContent({
         model: selectedModel,
@@ -493,7 +505,8 @@ export default function App() {
                        </div>
                      </section>
 
-                     <div className="grid grid-cols-3 gap-3">
+                     <div className="grid grid-cols-2 gap-3">
+                       <StatBox label="Luas" value={aiData.area || 'N/A'} color="bg-amber-500/10 border-t-amber-500/30" />
                        <StatBox label="APBD 24" value={aiData.budget} />
                        <StatBox label="Popul." value={aiData.population} />
                        <StatBox label="Growth" value={aiData.growth} />
