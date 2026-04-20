@@ -20,12 +20,15 @@ import {
   RefreshCw,
   Settings,
   MoreVertical,
-  Menu
+  Menu,
+  CheckCircle2,
+  XCircle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import Markdown from 'react-markdown';
 import 'leaflet/dist/leaflet.css';
-import { MapContainer, TileLayer, GeoJSON } from 'react-leaflet';
+import { MapContainer, GeoJSON } from 'react-leaflet';
+import type { LatLngBoundsExpression } from 'leaflet';
 import { GoogleGenAI, Type } from '@google/genai';
 import { cn } from './lib/utils';
 
@@ -43,6 +46,10 @@ interface RegionalData {
 }
 
 const INDONESIA_CENTER: [number, number] = [118, -2];
+const INDONESIA_BOUNDS: LatLngBoundsExpression = [
+  [-11.5, 94.0], // South-West (Sabang below / further out)
+  [6.5, 142.0]   // North-East (Papua further out)
+];
 
 // ... Mock Initial Data ...
 const MOCK_REGIONS: Record<string, Partial<RegionalData>> = {
@@ -75,6 +82,7 @@ export default function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [localApiKey, setLocalApiKey] = useState("");
   const availableModels = [
+    'gemini-3.1-pro-preview',
     'gemini-1.5-flash',
     'gemini-1.5-pro',
     'gemini-2.0-flash',
@@ -84,14 +92,25 @@ export default function App() {
   const [sidebarWidth, setSidebarWidth] = useState(256); // 256px
   const [isResizing, setIsResizing] = useState(false);
   const [geoJsonData, setGeoJsonData] = useState<any>(null);
+  const [apiKeyStatus, setApiKeyStatus] = useState<'idle'|'testing'|'valid'|'invalid'>('idle');
+
+  const GEMINI_KEY = (import.meta as any).env.VITE_GEMINI_API_KEY;
+  const activeApiKey = localApiKey || GEMINI_KEY;
+  const ai = useMemo(() => new GoogleGenAI({ apiKey: activeApiKey || 'N/A' }), [activeApiKey]);
 
   useEffect(() => {
-    fetch('/indonesia-map.json')
-      .then(res => res.json())
-      .then(data => setGeoJsonData(data))
-      .catch(err => console.error("Failed to load map data", err));
-  }, []);
-
+    if (!activeApiKey || activeApiKey === 'N/A') {
+      setApiKeyStatus('invalid');
+      return;
+    }
+    setApiKeyStatus('testing');
+    ai.models.generateContent({
+      model: selectedModel,
+      contents: "Test connection ping. Reply simply with 'OK'."
+    })
+      .then(() => setApiKeyStatus('valid'))
+      .catch(() => setApiKeyStatus('invalid'));
+  }, [activeApiKey, selectedModel]);
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       if (!isResizing) return;
@@ -109,9 +128,12 @@ export default function App() {
     };
   }, [isResizing]);
 
-  const GEMINI_KEY = (import.meta as any).env.VITE_GEMINI_API_KEY;
-  const activeApiKey = localApiKey || GEMINI_KEY;
-  const ai = useMemo(() => new GoogleGenAI({ apiKey: activeApiKey || 'N/A' }), [activeApiKey]);
+  useEffect(() => {
+    fetch('/indonesia-map.json')
+      .then(res => res.json())
+      .then(data => setGeoJsonData(data))
+      .catch(err => console.error("Failed to load map data", err));
+  }, []);
 
   const fetchRegionalInfo = async (provinceName: string) => {
     setIsLoading(true);
@@ -305,7 +327,7 @@ export default function App() {
         </header>
 
         {/* The Map Stage */}
-        <div className="flex-1 relative bg-gradient-to-b from-red-600/20 to-white/10 z-0 overflow-hidden flex flex-col pt-10">
+        <div className="flex-1 relative bg-gradient-to-b from-red-600 via-red-500 to-white z-0 overflow-hidden flex flex-col pt-10">
            
            {/* Indonesia Title Overlay */}
            <div className="absolute top-8 left-1/2 -translate-x-1/2 z-20 pointer-events-none text-center">
@@ -318,15 +340,13 @@ export default function App() {
            {/* Map Interaction Area */}
            <div className="flex-1 w-full h-full relative z-0">
              <MapContainer 
-               center={[-2, 118]} 
-               zoom={5} 
+               bounds={INDONESIA_BOUNDS}
+               minZoom={4}
+               maxBounds={INDONESIA_BOUNDS}
+               maxBoundsViscosity={1.0}
                style={{ height: '100%', width: '100%', backgroundColor: 'transparent' }} 
                zoomControl={false}
              >
-               <TileLayer
-                 url="https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png"
-                 attribution='&copy; <a href="https://carto.com/">CartoDB</a>'
-               />
                {geoJsonData && (
                  <GeoJSON
                    data={geoJsonData}
@@ -336,11 +356,11 @@ export default function App() {
                      const isSelected = selectedRegion === formattedName || selectedRegion === name;
                      
                      return {
-                       fillColor: isSelected ? "#ef4444" : "#27272a",
-                       weight: 1,
+                       fillColor: isSelected ? "#fcd34d" : "#27272a", // Gold when selected, dark zinc default
+                       weight: 1.5,
                        opacity: 1,
-                       color: isSelected ? "#ef4444" : "#3f3f46",
-                       fillOpacity: isSelected ? 0.8 : 0.6
+                       color: isSelected ? "#fbbf24" : "#ffffff", // Light border
+                       fillOpacity: isSelected ? 0.9 : 0.8
                      };
                    }}
                    onEachFeature={(feature: any, layer: any) => {
@@ -351,8 +371,9 @@ export default function App() {
                        mouseover: (e: any) => {
                          const l = e.target;
                          l.setStyle({
-                           fillOpacity: 0.9,
-                           fillColor: "#fca5a5"
+                           fillOpacity: 0.95,
+                           fillColor: "#ef4444", // Red on hover
+                           color: "#fff"
                          });
                          l.bringToFront();
                        },
@@ -360,8 +381,9 @@ export default function App() {
                          const l = e.target;
                          const isSelected = selectedRegion === formattedName || selectedRegion === name;
                          l.setStyle({
-                           fillOpacity: isSelected ? 0.8 : 0.6,
-                           fillColor: isSelected ? "#ef4444" : "#27272a"
+                           fillOpacity: isSelected ? 0.9 : 0.8,
+                           fillColor: isSelected ? "#fcd34d" : "#27272a",
+                           color: isSelected ? "#fbbf24" : "#ffffff"
                          });
                        },
                        click: () => {
@@ -532,9 +554,16 @@ export default function App() {
                 
                 <div className="p-6 space-y-6">
                   <div className="space-y-3">
-                    <label className="block text-xs font-bold text-zinc-400 uppercase tracking-widest">
-                      Gemini API Key
-                    </label>
+                    <div className="flex items-center justify-between">
+                      <label className="block text-xs font-bold text-zinc-400 uppercase tracking-widest">
+                        Gemini API Key
+                      </label>
+                      <div className="flex items-center gap-1.5">
+                        {apiKeyStatus === 'testing' && <Loader2 className="w-3 h-3 text-zinc-400 animate-spin" />}
+                        {apiKeyStatus === 'valid' && <><CheckCircle2 className="w-3 h-3 text-emerald-500" /><span className="text-[10px] text-emerald-500 font-bold uppercase">Connected</span></>}
+                        {apiKeyStatus === 'invalid' && <><XCircle className="w-3 h-3 text-red-500" /><span className="text-[10px] text-red-500 font-bold uppercase">Disconnected</span></>}
+                      </div>
+                    </div>
                     <input 
                       type="password"
                       placeholder={GEMINI_KEY && GEMINI_KEY !== 'N/A' ? "Using preset VITE_GEMINI_API_KEY" : "Enter your AI Studio API Key..."}
