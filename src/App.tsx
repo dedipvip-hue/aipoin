@@ -78,15 +78,16 @@ export default function App() {
   const [mapMode, setMapMode] = useState('PETA SDM');
 
   // --- Settings & Sidebar Resize ---
-  const [isNavOpen, setIsNavOpen] = useState(true);
+  const [isNavOpen, setIsNavOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [localApiKey, setLocalApiKey] = useState("");
   const availableModels = [
+    'gemini-3-flash-preview',
     'gemini-3.1-pro-preview',
+    'gemini-3.1-flash-lite-preview',
     'gemini-1.5-flash',
     'gemini-1.5-pro',
-    'gemini-2.0-flash',
-    'gemini-3.1-flash-lite-preview'
+    'gemini-2.0-flash'
   ];
   const [selectedModel, setSelectedModel] = useState(availableModels[0]);
   const [sidebarWidth, setSidebarWidth] = useState(256); // 256px
@@ -95,12 +96,21 @@ export default function App() {
   const [apiKeyStatus, setApiKeyStatus] = useState<'idle'|'testing'|'valid'|'invalid'>('idle');
   const [apiKeyErrorLog, setApiKeyErrorLog] = useState<string | null>(null);
 
-  const GEMINI_KEY = (import.meta as any).env.VITE_GEMINI_API_KEY;
+  const GEMINI_KEY = process.env.GEMINI_API_KEY;
   const activeApiKey = localApiKey || GEMINI_KEY;
-  const ai = useMemo(() => new GoogleGenAI({ apiKey: activeApiKey || 'N/A' }), [activeApiKey]);
+  
+  // Conditionally apply API key only if it exists
+  const ai = useMemo(() => {
+    try {
+      if (!activeApiKey || activeApiKey === 'N/A') return null;
+      return new GoogleGenAI({ apiKey: activeApiKey });
+    } catch {
+      return null;
+    }
+  }, [activeApiKey]);
 
   useEffect(() => {
-    if (!activeApiKey || activeApiKey === 'N/A') {
+    if (!ai) {
       setApiKeyStatus('invalid');
       setApiKeyErrorLog("API Key tidak ditemukan. Harap masukkan kunci Gemini AI di profil pengaturan.");
       return;
@@ -149,7 +159,7 @@ export default function App() {
     setAiData(null);
     setIsSidebarOpen(true);
 
-    if (!activeApiKey || activeApiKey === 'N/A') {
+    if (!ai) {
       console.warn("Gemini API key is not configured.");
       setAiData({
         province: provinceName,
@@ -206,7 +216,7 @@ export default function App() {
     e.preventDefault();
     if (!chatInput.trim()) return;
 
-    if (!activeApiKey || activeApiKey === 'N/A') {
+    if (!ai) {
       setChatHistory(prev => [...prev, { role: 'ai', text: "Mohon atur GEMINI API KEY di Pengaturan (Bawah Kiri) untuk menggunakan asisten AI." }]);
       return;
     }
@@ -227,6 +237,7 @@ export default function App() {
         contents: prompt
       });
       
+      console.log(result.text); // Recommended debug output layer per reference.
       setChatHistory(prev => [...prev, { role: 'ai', text: result.text || "Saya tidak yakin." }]);
     } catch (e) {
       setChatHistory(prev => [...prev, { role: 'ai', text: "Terjadi kesalahan koneksi ke backend AI." }]);
@@ -329,15 +340,16 @@ export default function App() {
             <div className="hidden sm:block p-2 bg-indigo-600/10 border border-indigo-500/20 rounded-lg text-[10px] font-bold text-indigo-400">
               SDM INDEX: 74.39
             </div>
-            {!isSidebarOpen && selectedRegion && (
-              <button 
-                onClick={() => setIsSidebarOpen(true)}
-                className="w-10 h-10 rounded-xl bg-indigo-600 shadow-lg shadow-indigo-600/40 flex items-center justify-center hover:bg-indigo-500 transition-all text-white cursor-pointer"
-              >
-                <Sparkles className="w-5 h-5" />
-              </button>
-            )}
-            <button className="text-zinc-500 hover:text-white transition-colors cursor-pointer">
+            
+            <button 
+              onClick={() => setIsSidebarOpen(true)}
+              className="p-2 text-zinc-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors cursor-pointer"
+              title="Buka AI Assistant"
+            >
+              <Sparkles className="w-5 h-5 text-indigo-400" />
+            </button>
+            
+            <button className="p-2 text-zinc-500 hover:text-white transition-colors cursor-pointer rounded-lg hover:bg-white/10">
               <Search className="w-5 h-5" />
             </button>
           </div>
@@ -491,13 +503,27 @@ export default function App() {
                         <p className="text-[10px] font-black text-indigo-400 uppercase tracking-[0.2em] flex items-center gap-2">
                           <Shield className="w-3 h-3" /> Targeted Policies
                         </p>
-                        <div className="space-y-2">
-                          {aiData.policies.map((p, i) => (
-                            <div key={i} className="group p-4 bg-zinc-900 border border-white/5 rounded-2xl text-[11px] text-zinc-300 font-bold hover:border-indigo-500/30 transition-all flex items-start gap-3">
-                              <div className="w-1.5 h-1.5 rounded-full bg-indigo-500 mt-1 shrink-0" />
-                              {p}
-                            </div>
-                          ))}
+                        <div className="space-y-3">
+                          {aiData.policies.map((p, i) => {
+                            const colors = [
+                              { bg: 'bg-indigo-500/10', border: 'border-indigo-500/20', hover: 'hover:border-indigo-500/40', text: 'text-indigo-200', dot: 'bg-indigo-500' },
+                              { bg: 'bg-rose-500/10', border: 'border-rose-500/20', hover: 'hover:border-rose-500/40', text: 'text-rose-200', dot: 'bg-rose-500' },
+                              { bg: 'bg-emerald-500/10', border: 'border-emerald-500/20', hover: 'hover:border-emerald-500/40', text: 'text-emerald-200', dot: 'bg-emerald-500' },
+                              { bg: 'bg-amber-500/10', border: 'border-amber-500/20', hover: 'hover:border-amber-500/40', text: 'text-amber-200', dot: 'bg-amber-500' },
+                              { bg: 'bg-cyan-500/10', border: 'border-cyan-500/20', hover: 'hover:border-cyan-500/40', text: 'text-cyan-200', dot: 'bg-cyan-500' },
+                              { bg: 'bg-fuchsia-500/10', border: 'border-fuchsia-500/20', hover: 'hover:border-fuchsia-500/40', text: 'text-fuchsia-200', dot: 'bg-fuchsia-500' }
+                            ];
+                            const theme = colors[i % colors.length];
+                            return (
+                              <div key={i} className={cn(
+                                "group p-4 border rounded-2xl text-[11px] font-bold transition-all flex items-start gap-3",
+                                theme.bg, theme.border, theme.hover, theme.text
+                              )}>
+                                <div className={cn("w-1.5 h-1.5 rounded-full mt-1.5 shrink-0", theme.dot)} />
+                                <span className="leading-relaxed drop-shadow-sm">{p}</span>
+                              </div>
+                            );
+                          })}
                         </div>
                      </section>
 
@@ -578,7 +604,7 @@ export default function App() {
                     </div>
                     <input 
                       type="password"
-                      placeholder={GEMINI_KEY && GEMINI_KEY !== 'N/A' ? "Using preset VITE_GEMINI_API_KEY" : "Enter your AI Studio API Key..."}
+                      placeholder={GEMINI_KEY && GEMINI_KEY !== 'N/A' ? "Using preset GEMINI_API_KEY" : "Enter your AI Studio API Key..."}
                       value={localApiKey}
                       onChange={(e) => setLocalApiKey(e.target.value)}
                       className="w-full bg-zinc-950 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-mono"
@@ -656,10 +682,10 @@ function MapControl({ label }: { label: string }) {
   );
 }
 
-function StatBox({ label, value }: { label: string, value: string }) {
+function StatBox({ label, value, color = "bg-zinc-900 border-t-indigo-500/30" }: { label: string, value: string, color?: string }) {
   return (
-    <div className="bg-zinc-900 p-3 rounded-xl border border-white/5 border-t-indigo-500/30 border-t-2">
-      <p className="text-[8px] text-zinc-500 font-black uppercase tracking-wider">{label}</p>
+    <div className={cn("p-3 rounded-xl border border-white/5 border-t-2", color)}>
+      <p className="text-[8px] text-zinc-400 font-black uppercase tracking-wider">{label}</p>
       <p className="text-[10px] font-black text-white truncate">{value}</p>
     </div>
   );
