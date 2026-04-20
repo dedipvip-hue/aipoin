@@ -19,7 +19,8 @@ import {
   X,
   RefreshCw,
   Settings,
-  MoreVertical
+  MoreVertical,
+  Menu
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import Markdown from 'react-markdown';
@@ -28,7 +29,8 @@ import { GoogleGenAI, Type } from '@google/genai';
 import { cn } from './lib/utils';
 
 // --- Constants & Types ---
-const GEO_URL = "https://code.highcharts.com/mapdata/countries/id/id-all.topo.json";
+// Switching back to a local robust geojson to prevent external HTTP 404 blockages or CORS issues.
+const GEO_URL = "/indonesia-map.json";
 
 interface RegionalData {
   province: string;
@@ -68,6 +70,7 @@ export default function App() {
   const [mapMode, setMapMode] = useState('SDM MAP');
 
   // --- Settings & Sidebar Resize ---
+  const [isNavOpen, setIsNavOpen] = useState(true);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [localApiKey, setLocalApiKey] = useState("");
   const availableModels = [
@@ -202,14 +205,26 @@ export default function App() {
       
       {/* 1. Sidebar - Resizable on the left */}
       <aside 
-        style={{ width: `${sidebarWidth}px` }}
-        className="relative flex-none border-r border-white/5 bg-zinc-900/90 flex flex-col py-6 px-4 z-[100] transition-[width] duration-0"
+        style={{ width: isNavOpen ? `${sidebarWidth}px` : '0px' }}
+        className={cn(
+          "relative flex-none border-r border-white/5 bg-zinc-900/90 flex flex-col z-[100] transition-all",
+          isResizing ? "duration-0" : "duration-300 ease-in-out",
+          isNavOpen ? "py-6 px-4" : "p-0 overflow-hidden opacity-0 border-r-0 pointer-events-none"
+        )}
       >
-        <div className="flex items-center gap-3 mb-10 px-2 shrink-0 truncate">
-          <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center shrink-0 shadow-lg shadow-indigo-600/20">
-            <LayoutDashboard className="w-5 h-5 text-white" />
+        <div className="flex items-center justify-between mb-10 px-2 shrink-0 truncate">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center shrink-0 shadow-lg shadow-indigo-600/20">
+              <LayoutDashboard className="w-5 h-5 text-white" />
+            </div>
+            <span className="font-black text-white text-sm uppercase tracking-tighter truncate">DATA SDM ID</span>
           </div>
-          <span className="font-black text-white text-sm uppercase tracking-tighter truncate">DATA SDM ID</span>
+          <button 
+            onClick={() => setIsNavOpen(false)}
+            className="p-1.5 text-zinc-500 hover:bg-white/10 hover:text-white rounded-lg transition-colors cursor-pointer shrink-0"
+          >
+            <X className="w-4 h-4" />
+          </button>
         </div>
 
         <nav className="flex-1 space-y-1 overflow-y-auto overflow-x-hidden">
@@ -251,13 +266,23 @@ export default function App() {
       </aside>
 
       {/* 2. Main Content Area */}
-      <main className="flex-1 relative flex flex-col min-w-0 z-10">
+      <main className="flex-1 relative flex flex-col min-w-0 z-10 transition-all duration-300">
         
         {/* Header Stats */}
         <header className="h-16 flex items-center justify-between px-6 bg-zinc-950/80 border-b border-white/5 z-50">
-          <div className="flex flex-col">
-            <span className="text-[9px] text-zinc-500 font-bold tracking-widest uppercase">Target Region</span>
-            <h2 className="text-sm font-bold text-white uppercase italic">{selectedRegion || 'Pilih Wilayah...'}</h2>
+          <div className="flex items-center gap-4">
+            {!isNavOpen && (
+              <button 
+                onClick={() => setIsNavOpen(true)}
+                className="p-2 -ml-2 text-zinc-400 hover:bg-white/10 hover:text-white rounded-lg transition-colors cursor-pointer"
+              >
+                <Menu className="w-5 h-5" />
+              </button>
+            )}
+            <div className="flex flex-col">
+              <span className="text-[9px] text-zinc-500 font-bold tracking-widest uppercase">Target Region</span>
+              <h2 className="text-sm font-bold text-white uppercase italic">{selectedRegion || 'Pilih Wilayah...'}</h2>
+            </div>
           </div>
           
           <div className="flex items-center gap-4">
@@ -271,9 +296,18 @@ export default function App() {
         </header>
 
         {/* The Map Stage */}
-        <div className="flex-1 relative bg-[#050505] z-0">
+        <div className="flex-1 relative bg-gradient-to-b from-red-600/20 to-white/10 z-0 overflow-hidden flex flex-col pt-10">
+           
+           {/* Indonesia Title Overlay */}
+           <div className="absolute top-8 left-1/2 -translate-x-1/2 z-20 pointer-events-none text-center">
+             <h1 className="text-4xl md:text-6xl font-black uppercase tracking-tighter drop-shadow-2xl">
+                <span className="text-red-500">INDONE</span><span className="text-zinc-100">SIA</span>
+             </h1>
+             <p className="text-xs font-bold text-zinc-400 tracking-widest mt-2 uppercase shadow-black/50 drop-shadow-md">National Data Center</p>
+           </div>
+
            {/* Map Interaction Area */}
-           <div className="absolute inset-0 w-full h-full">
+           <div className="flex-1 w-full h-full relative">
             <ComposableMap
               projection="geoMercator"
               projectionConfig={{
@@ -296,33 +330,38 @@ export default function App() {
                     if (!geographies || geographies.length === 0) return <text x="50%" y="50%" fill="#fff" fontSize="20" textAnchor="middle" className="animate-pulse">Loading Map...</text>;
                     
                     return geographies.map((geo) => {
-                      const name = geo.properties.name || geo.properties.NAME_1 || geo.properties.state || geo.properties.PROP || "Unknown";
-                      const isSelected = selectedRegion === name;
+                      // Extract name from this specific GeoJSON format
+                      const name = geo.properties.Propinsi || geo.properties.name || geo.properties.NAME_1 || geo.properties.state || "Unknown";
+                      
+                      // Title case it to match our mock data nicely (e.g. "Jawa Barat" instead of "JAWA BARAT")
+                      const formattedName = name.toLowerCase().split(' ').map((word: string) => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+                      
+                      const isSelected = selectedRegion === formattedName || selectedRegion === name;
                       
                       return (
                         <Geography
                           key={geo.rsmKey}
                           geography={geo}
                           onClick={() => {
-                            console.log("Clicked:", name);
-                            onRegionClick(name);
+                            console.log("Clicked:", formattedName);
+                            onRegionClick(formattedName);
                           }}
                           style={{
                             default: {
-                              fill: isSelected ? "#6366f1" : "#3f3f46",
-                              stroke: "#52525b",
-                              strokeWidth: 1,
+                              fill: isSelected ? "#ef4444" : "#27272a", // Red if selected, dark zinc default for contrast with gradient
+                              stroke: "#ef4444",
+                              strokeWidth: 0.5,
                               outline: "none"
                             },
                             hover: {
-                              fill: "#818cf8",
-                              stroke: "#fff",
-                              strokeWidth: 2,
+                              fill: "#fca5a5", // Lighter red on hover
+                              stroke: "#ef4444",
+                              strokeWidth: 1.5,
                               outline: "none",
                               cursor: "pointer"
                             },
                             pressed: {
-                              fill: "#4f46e5",
+                              fill: "#dc2626", // Darker red on press
                               outline: "none"
                             }
                           }}
