@@ -75,7 +75,7 @@ export default function App() {
   const [chatHistory, setChatHistory] = useState<{ role: 'user' | 'ai'; text: string }[]>([]);
   const [isChatLoading, setIsChatLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('Network Map');
-  const [mapMode, setMapMode] = useState('SDM MAP');
+  const [mapMode, setMapMode] = useState('PETA SDM');
 
   // --- Settings & Sidebar Resize ---
   const [isNavOpen, setIsNavOpen] = useState(true);
@@ -93,6 +93,7 @@ export default function App() {
   const [isResizing, setIsResizing] = useState(false);
   const [geoJsonData, setGeoJsonData] = useState<any>(null);
   const [apiKeyStatus, setApiKeyStatus] = useState<'idle'|'testing'|'valid'|'invalid'>('idle');
+  const [apiKeyErrorLog, setApiKeyErrorLog] = useState<string | null>(null);
 
   const GEMINI_KEY = (import.meta as any).env.VITE_GEMINI_API_KEY;
   const activeApiKey = localApiKey || GEMINI_KEY;
@@ -101,15 +102,23 @@ export default function App() {
   useEffect(() => {
     if (!activeApiKey || activeApiKey === 'N/A') {
       setApiKeyStatus('invalid');
+      setApiKeyErrorLog("API Key tidak ditemukan. Harap masukkan kunci Gemini AI di profil pengaturan.");
       return;
     }
     setApiKeyStatus('testing');
+    setApiKeyErrorLog(null);
     ai.models.generateContent({
       model: selectedModel,
       contents: "Test connection ping. Reply simply with 'OK'."
     })
-      .then(() => setApiKeyStatus('valid'))
-      .catch(() => setApiKeyStatus('invalid'));
+      .then(() => {
+        setApiKeyStatus('valid');
+        setApiKeyErrorLog(null);
+      })
+      .catch((err) => {
+        setApiKeyStatus('invalid');
+        setApiKeyErrorLog(err?.message || "Kesalahan koneksi ke server Gemini. Harap periksa kunci API.");
+      });
   }, [activeApiKey, selectedModel]);
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
@@ -320,6 +329,14 @@ export default function App() {
             <div className="hidden sm:block p-2 bg-indigo-600/10 border border-indigo-500/20 rounded-lg text-[10px] font-bold text-indigo-400">
               SDM INDEX: 74.39
             </div>
+            {!isSidebarOpen && selectedRegion && (
+              <button 
+                onClick={() => setIsSidebarOpen(true)}
+                className="w-10 h-10 rounded-xl bg-indigo-600 shadow-lg shadow-indigo-600/40 flex items-center justify-center hover:bg-indigo-500 transition-all text-white cursor-pointer"
+              >
+                <Sparkles className="w-5 h-5" />
+              </button>
+            )}
             <button className="text-zinc-500 hover:text-white transition-colors cursor-pointer">
               <Search className="w-5 h-5" />
             </button>
@@ -329,8 +346,13 @@ export default function App() {
         {/* The Map Stage */}
         <div className="flex-1 relative bg-gradient-to-b from-red-600 via-red-500 to-white z-0 overflow-hidden flex flex-col pt-10">
            
-           {/* Indonesia Title Overlay */}
-           <div className="absolute top-8 left-1/2 -translate-x-1/2 z-20 pointer-events-none text-center">
+           <div className="absolute top-6 left-1/2 -translate-x-1/2 z-20 pointer-events-none text-center w-full px-4">
+             {apiKeyErrorLog && apiKeyStatus === 'invalid' && (
+                <div className="mb-2 mx-auto inline-flex items-center gap-2 px-3 py-2 bg-red-950/80 border border-red-500/30 text-red-400 text-xs rounded-lg backdrop-blur-md">
+                   <XCircle className="w-4 h-4 shrink-0" />
+                   <span className="font-mono">{apiKeyErrorLog}</span>
+                </div>
+             )}
              <h1 className="text-4xl md:text-6xl font-black uppercase tracking-tighter drop-shadow-2xl">
                 <span className="text-red-500">INDONE</span><span className="text-zinc-100">SIA</span>
              </h1>
@@ -397,22 +419,12 @@ export default function App() {
            </div>
 
            {/* Overlay HUD controls */}
-           <div className="absolute bottom-6 left-6 z-40 flex flex-col gap-2">
-             <MapBtn label="Satellite" active={mapMode === 'SATELLITE'} onClick={() => setMapMode('SATELLITE')} />
-             <MapBtn label="SDM Map" active={mapMode === 'SDM MAP'} onClick={() => setMapMode('SDM MAP')} />
-             <MapBtn label="Policy" active={mapMode === 'POLICY'} onClick={() => setMapMode('POLICY')} />
+           <div className="absolute bottom-6 right-6 z-40 flex flex-col gap-2">
+             <MapBtn label="Satelit" active={mapMode === 'SATELIT'} onClick={() => setMapMode('SATELIT')} />
+             <MapBtn label="Peta SDM" active={mapMode === 'PETA SDM'} onClick={() => setMapMode('PETA SDM')} />
+             <MapBtn label="Kebijakan" active={mapMode === 'KEBIJAKAN'} onClick={() => setMapMode('KEBIJAKAN')} />
            </div>
 
-           <div className="absolute top-6 right-6 z-40">
-            {!isSidebarOpen && selectedRegion && (
-              <button 
-                onClick={() => setIsSidebarOpen(true)}
-                className="w-12 h-12 rounded-2xl bg-indigo-600 shadow-2xl shadow-indigo-600/40 flex items-center justify-center hover:scale-105 active:scale-95 transition-all text-white cursor-pointer"
-              >
-                <Sparkles className="w-5 h-5" />
-              </button>
-            )}
-           </div>
         </div>
       </main>
 
@@ -669,6 +681,7 @@ function MapBtn({ label, active = false, onClick }: { label: string, active?: bo
 }
 
 function PolicyItem({ text }: { text: string }) {
+
   return (
     <div className="flex items-start gap-4 group bg-white/5 p-3 rounded-2xl border border-white/5">
       <div className="mt-1.5 w-1.5 h-1.5 rounded-full bg-indigo-500 shrink-0 group-hover:scale-125 transition-transform" />
