@@ -113,7 +113,7 @@ export default function App() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ selectedModel })
     })
-      .then(res => res.json().then(data => ({ res, data })))
+      .then(res => res.json().then(data => ({ res, data: data as any })))
       .then(({ res, data }) => {
         if (res.ok) {
           setApiKeyStatus('valid');
@@ -210,7 +210,7 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userText, selectedRegion, selectedModel })
       });
-      const data = await response.json();
+      const data: any = await response.json();
       
       if (!response.ok) {
         throw new Error(data.error || "Gagal menghubungi backend AI");
@@ -461,26 +461,23 @@ export default function App() {
                      animate={{ opacity: 1, y: 0 }}
                      className="space-y-10"
                    >
-                     <section>
-                       <div className="flex items-center gap-3 mb-2">
-                         <span className="w-1.5 h-6 bg-indigo-600 rounded-full" />
+                     <section className="mb-6">
+                       <div className="flex items-center gap-3">
+                         <span className="w-1.5 h-8 bg-gradient-to-b from-rose-500 to-indigo-500 rounded-full" />
                          <h2 className="text-4xl font-black text-white tracking-tighter">{aiData.province}</h2>
-                       </div>
-                       <div className="prose prose-invert prose-sm text-zinc-400 font-medium leading-relaxed italic border-l border-white/10 pl-5 bg-white/5 py-4 rounded-r-2xl">
-                         <Markdown>{aiData.summary}</Markdown>
                        </div>
                      </section>
 
-                     <div className="grid grid-cols-2 gap-3">
-                       <StatBox label="Luas" value={aiData.area || 'N/A'} color="bg-amber-500/10 border-t-amber-500/30" />
-                       <StatBox label="APBD 24" value={aiData.budget} />
-                       <StatBox label="Popul." value={aiData.population} />
-                       <StatBox label="Growth" value={aiData.growth} />
+                     <div className="grid grid-cols-2 gap-3 mb-6">
+                       <StatBox label="Populasi" value={aiData.population} color="bg-rose-500/10 border-t-rose-500 text-rose-100" />
+                       <StatBox label="APBD 24" value={aiData.budget} color="bg-emerald-500/10 border-t-emerald-500 text-emerald-100" />
+                       <StatBox label="Luas" value={aiData.area || 'N/A'} color="bg-amber-500/10 border-t-amber-500 text-amber-100" />
+                       <StatBox label="Pertumbuhan" value={aiData.growth} color="bg-indigo-500/10 border-t-indigo-500 text-indigo-100" />
                      </div>
 
-                     <section className="space-y-4">
-                        <p className="text-[10px] font-black text-indigo-400 uppercase tracking-[0.2em] flex items-center gap-2">
-                          <Shield className="w-3 h-3" /> Targeted Policies
+                     <section className="space-y-4 mb-8">
+                        <p className="text-[10px] font-black w-fit px-3 py-1 bg-white/5 rounded-full text-indigo-400 uppercase tracking-[0.2em] flex items-center gap-2">
+                          <Shield className="w-3 h-3" /> Kebijakan yang Ditargetkan
                         </p>
                         <div className="space-y-3">
                           {aiData.policies.map((p, i) => {
@@ -495,10 +492,10 @@ export default function App() {
                             const theme = colors[i % colors.length];
                             return (
                               <div key={i} className={cn(
-                                "group p-4 border rounded-2xl text-[11px] font-bold transition-all flex items-start gap-3",
+                                "group p-4 border rounded-2xl text-[11px] font-bold transition-all flex items-start gap-3 shadow-lg",
                                 theme.bg, theme.border, theme.hover, theme.text
                               )}>
-                                <div className={cn("w-1.5 h-1.5 rounded-full mt-1.5 shrink-0", theme.dot)} />
+                                <div className={cn("w-2 h-2 rounded-full mt-1 shrink-0 shadow-[0_0_8px_rgba(0,0,0,0.5)]", theme.dot)} />
                                 <span className="leading-relaxed drop-shadow-sm">{p}</span>
                               </div>
                             );
@@ -506,28 +503,48 @@ export default function App() {
                         </div>
                      </section>
 
-                     <section className="pt-8 border-t border-white/5 space-y-6">
-                        <div className="flex items-center gap-2 text-zinc-500">
+                     {/* 3. Keterangan pulau teks nya berwarna di note */}
+                     <section className="mb-8">
+                       <div className="relative p-5 rounded-2xl bg-gradient-to-br from-indigo-900/40 to-fuchsia-900/20 border border-fuchsia-500/20 shadow-inner mt-4">
+                          <div className="absolute -top-3 left-4 px-3 py-1 bg-fuchsia-900 border border-fuchsia-500 text-fuchsia-300 text-[8px] font-black rounded-full uppercase tracking-widest">
+                            Note / Keterangan Pulau
+                          </div>
+                          <div className="prose prose-invert prose-sm text-fuchsia-100/90 font-medium leading-relaxed italic mt-2">
+                            <Markdown>{aiData.summary}</Markdown>
+                          </div>
+                       </div>
+                     </section>
+
+                     <section className="pt-8 border-t border-white/10 space-y-6">
+                        <div className="flex items-center gap-2 text-indigo-400">
                           <MessageSquare className="w-4 h-4" />
-                          <span className="text-[10px] font-black uppercase tracking-widest">Discussion Stream</span>
+                          <span className="text-[10px] font-black w-fit px-3 py-1 bg-indigo-500/10 rounded-full uppercase tracking-widest border border-indigo-500/20">Alur Diskusi</span>
                         </div>
                         <div className="space-y-4">
                            {chatHistory.map((c, i) => (
                              <div key={i} className={cn(
-                               "p-4 rounded-2xl text-xs max-w-[90%] font-medium",
+                               "relative p-4 rounded-2xl text-xs max-w-[90%] font-medium shadow-md mt-4",
                                c.role === 'user' 
-                                ? "bg-zinc-900 border border-white/5 ml-auto text-zinc-300" 
-                                : "bg-indigo-600/10 border border-indigo-500/20 mr-auto text-white shadow-sm"
+                                ? "bg-gradient-to-br from-zinc-800 to-zinc-900 border border-zinc-700 ml-auto text-zinc-200" 
+                                : "bg-gradient-to-br from-indigo-600/20 to-indigo-900/20 border border-indigo-500/30 mr-auto text-indigo-100"
                              )}>
-                               <Markdown>{c.text}</Markdown>
+                               <div className={cn(
+                                  "absolute -top-2.5 px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest border",
+                                  c.role === 'user' ? "right-4 bg-zinc-800 border-zinc-600 text-zinc-400" : "left-4 bg-indigo-900 border-indigo-500 text-indigo-300"
+                               )}>
+                                 {c.role === 'user' ? 'Anda' : 'Analisis AI'}
+                               </div>
+                               <div className="mt-1 leading-relaxed">
+                                 <Markdown>{c.text}</Markdown>
+                               </div>
                              </div>
                            ))}
                         </div>
                         <form onSubmit={handleChatSubmit} className="relative pt-4">
                           <input 
                             type="text" value={chatInput} onChange={e => setChatInput(e.target.value)}
-                            placeholder="Tanyakan detail spesifik..."
-                            className="w-full bg-zinc-900 border border-white/10 rounded-2xl px-6 py-4 text-xs text-white focus:outline-none focus:ring-1 focus:ring-indigo-500 transition-all placeholder:text-zinc-600"
+                            placeholder="Ketik pertanyaan untuk AI..."
+                            className="w-full bg-zinc-950/80 border border-indigo-500/30 rounded-2xl px-6 py-4 text-xs text-indigo-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-zinc-900 transition-all placeholder:text-zinc-600 shadow-inner"
                           />
                         </form>
                      </section>
