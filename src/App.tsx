@@ -37,16 +37,11 @@ import { cn } from './lib/utils';
 const GEO_URL = "/indonesia-map.json";
 
 interface RegionalData {
-  province: string;
-  budget: string;
-  population: string;
-  growth: string;
-  policies: string[];
+  title: string;
+  stats: { label: string; value: string }[];
+  listTitle: string;
+  listItems: string[];
   summary: string;
-  area: string;
-  popPercentage: string;
-  totalKab: string;
-  totalKec: string;
 }
 
 const INDONESIA_CENTER: [number, number] = [118, -2];
@@ -58,14 +53,12 @@ const INDONESIA_BOUNDS: LatLngBoundsExpression = [
 // ... Mock Initial Data ...
 const MOCK_REGIONS: Record<string, Partial<RegionalData>> = {
   "Jakarta Raya": {
-    budget: "Rp 82.47 Triliun (2024)",
-    population: "10.67 Juta",
-    growth: "5.1%",
+    title: "Jakarta Raya",
+    stats: [{label: "Mock", value: "TBA"}],
   },
   "Jawa Barat": {
-    budget: "Rp 36.1 Triliun",
-    population: "49.9 Juta",
-    growth: "5.0%",
+    title: "Jawa Barat",
+    stats: [{label: "Mock", value: "TBA"}],
   },
 };
 
@@ -162,7 +155,7 @@ export default function App() {
       const response = await fetch('/api/region', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ provinceName, selectedModel })
+        body: JSON.stringify({ provinceName, selectedModel, mapMode })
       });
       
       const dataStr = await response.text();
@@ -179,16 +172,14 @@ export default function App() {
       console.error("AI Error:", error);
       // Fallback
       setAiData({
-        province: provinceName,
-        budget: "Akses Dibatasi",
-        population: "Akses Dibatasi",
-        growth: "Akses Dibatasi",
-        policies: ["Harap atur Kunci API di Pengaturan (Bawah Kiri)"],
+        title: provinceName,
+        stats: [
+          { label: "Status", value: "Error" },
+          { label: "Akses", value: "Dibatasi" }
+        ],
+        listTitle: "Peringatan",
+        listItems: ["Harap atur Kunci API di Pengaturan"],
         summary: error.message || "Gagal menyambung ke server AI.",
-        area: "Tidak tersedia",
-        popPercentage: "Tidak tersedia",
-        totalKab: "Tidak tersedia",
-        totalKec: "Tidak tersedia"
       });
     } finally {
       setIsLoading(false);
@@ -410,9 +401,10 @@ export default function App() {
 
            {/* Overlay HUD controls */}
            <div className="absolute bottom-6 right-6 z-40 flex flex-col gap-2">
-             <MapBtn label="Satelit" active={mapMode === 'SATELIT'} onClick={() => setMapMode('SATELIT')} />
-             <MapBtn label="Peta SDM" active={mapMode === 'PETA SDM'} onClick={() => setMapMode('PETA SDM')} />
-             <MapBtn label="Kebijakan" active={mapMode === 'KEBIJAKAN'} onClick={() => setMapMode('KEBIJAKAN')} />
+             <MapBtn label="Sekolah" active={mapMode === 'SEKOLAH'} onClick={() => setMapMode('SEKOLAH')} />
+             <MapBtn label="Kota" active={mapMode === 'KOTA'} onClick={() => setMapMode('KOTA')} />
+             <MapBtn label="Kabupaten" active={mapMode === 'KABUPATEN'} onClick={() => setMapMode('KABUPATEN')} />
+             <MapBtn label="Kecamatan" active={mapMode === 'KECAMATAN'} onClick={() => setMapMode('KECAMATAN')} />
            </div>
 
         </div>
@@ -464,23 +456,32 @@ export default function App() {
                      <section className="mb-6">
                        <div className="flex items-center gap-3">
                          <span className="w-1.5 h-8 bg-gradient-to-b from-rose-500 to-indigo-500 rounded-full" />
-                         <h2 className="text-4xl font-black text-white tracking-tighter">{aiData.province}</h2>
+                         <h2 className="text-4xl font-black text-white tracking-tighter">{aiData.title}</h2>
                        </div>
                      </section>
 
                      <div className="grid grid-cols-2 gap-3 mb-6">
-                       <StatBox label="Populasi" value={aiData.population} color="bg-rose-500/10 border-t-rose-500 text-rose-100" />
-                       <StatBox label="APBD 24" value={aiData.budget} color="bg-emerald-500/10 border-t-emerald-500 text-emerald-100" />
-                       <StatBox label="Luas" value={aiData.area || 'N/A'} color="bg-amber-500/10 border-t-amber-500 text-amber-100" />
-                       <StatBox label="Pertumbuhan" value={aiData.growth} color="bg-indigo-500/10 border-t-indigo-500 text-indigo-100" />
+                        {aiData.stats?.map((stat: { label: string, value: string }, i: number) => {
+                          const borderColors = [
+                            'border-t-rose-500 text-rose-100 bg-rose-500/10',
+                            'border-t-emerald-500 text-emerald-100 bg-emerald-500/10',
+                            'border-t-amber-500 text-amber-100 bg-amber-500/10',
+                            'border-t-indigo-500 text-indigo-100 bg-indigo-500/10'
+                          ];
+                          return (
+                            <div key={i}>
+                              <StatBox label={stat.label} value={stat.value} color={borderColors[i % borderColors.length]} />
+                            </div>
+                          );
+                        })}
                      </div>
 
                      <section className="space-y-4 mb-8">
                         <p className="text-[10px] font-black w-fit px-3 py-1 bg-white/5 rounded-full text-indigo-400 uppercase tracking-[0.2em] flex items-center gap-2">
-                          <Shield className="w-3 h-3" /> Kebijakan yang Ditargetkan
+                          <Shield className="w-3 h-3" /> {aiData.listTitle}
                         </p>
                         <div className="space-y-3">
-                          {aiData.policies.map((p, i) => {
+                          {aiData.listItems?.map((p: string, i: number) => {
                             const colors = [
                               { bg: 'bg-indigo-500/10', border: 'border-indigo-500/20', hover: 'hover:border-indigo-500/40', text: 'text-indigo-200', dot: 'bg-indigo-500' },
                               { bg: 'bg-rose-500/10', border: 'border-rose-500/20', hover: 'hover:border-rose-500/40', text: 'text-rose-200', dot: 'bg-rose-500' },

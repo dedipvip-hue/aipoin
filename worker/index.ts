@@ -50,8 +50,8 @@ export default {
     // AI POST /api/region
     if (request.method === 'POST' && url.pathname === '/api/region') {
       try {
-        const body = await request.json() as { provinceName: string, selectedModel: string };
-        const { provinceName, selectedModel } = body;
+        const body = await request.json() as { provinceName: string, selectedModel: string, mapMode?: string };
+        const { provinceName, selectedModel, mapMode = 'SEKOLAH' } = body;
         
         let apiKey = env.GEMINI_API_KEY;
         console.log("Checking API key in env:", !!apiKey);
@@ -76,19 +76,33 @@ export default {
         }
         
         const ai = new GoogleGenAI({ apiKey });
-        const prompt = `Cari dan analisis data kebijakan pemerintah, anggaran (APBD), dan peraturan terbaru untuk provinsi "${provinceName}" di Indonesia.
-      Kembalikan data HANYA dalam format JSON valid yang berisi:
+        
+        let specificInstruction = "";
+        if (mapMode === 'SEKOLAH') {
+          specificInstruction = `Fokus pada statistik jumlah sekolah (SD, SMP, SMA, SMK, dll), kualitas pendidikan, dan distribusi jumlah sekolah di berbagai tingkatan.`;
+        } else if (mapMode === 'KOTA') {
+          specificInstruction = `Fokus pada jumlah kota administrasi/otonom, nama kota terbesar, tingkat urbanisasi, dan karakteristik khusus perkotaannya.`;
+        } else if (mapMode === 'KABUPATEN') {
+          specificInstruction = `Fokus pada jumlah kabupaten, luas cakupan kabupaten, distribusi wilayah, dan potensi sumber daya dari berbagai kabupaten.`;
+        } else if (mapMode === 'KECAMATAN') {
+          specificInstruction = `Fokus pada jumlah total kecamatan, tantangan administratif wilayah, kepadatan kecamatan, atau persebaran pemukiman di kecamatan.`;
+        } else {
+          specificInstruction = `Fokus pada kondisi SDM, demografi umum, dan kebijakan makro.`;
+        }
+
+        const prompt = `Analisis provinsi "${provinceName}" di Indonesia. ${specificInstruction}
+      Kembalikan data HANYA dalam format JSON valid yang berisi persis struktur berikut:
       {
-        "province": "Nama provinsi",
-        "budget": "Estimasi total APBD terbaru",
-        "population": "Estimasi populasi",
-        "popPercentage": "Persentase populasi dari total Indonesia",
-        "area": "Luas wilayah",
-        "totalKab": "Total kabupaten",
-        "totalKec": "Total kecamatan",
-        "growth": "Pertumbuhan ekonomi",
-        "policies": ["Kebijakan 1", "Kebijakan 2", "Kebijakan 3"],
-        "summary": "Ringkasan fokus pembangunan (2 paragraf)"
+        "title": "Nama Provinsi",
+        "stats": [
+          { "label": "Nama Stat 1 (cth: Total Sekolah / Total Kota / dll)", "value": "Angka/Nilai" },
+          { "label": "Nama Stat 2", "value": "Angka/Nilai" },
+          { "label": "Nama Stat 3", "value": "Angka/Nilai" },
+          { "label": "Nama Stat 4", "value": "Angka/Nilai" }
+        ],
+        "listTitle": "Judul daftar (cth: Kota Terbesar, Prioritas Pendidikan, dll)",
+        "listItems": ["Poin 1 detail...", "Poin 2 detail...", "Poin 3 detail..."],
+        "summary": "Ringkasan deskriptif terkait fokus analisis di atas (1-2 paragraf pendek)."
       }`;
         
         const result = await ai.models.generateContent({
