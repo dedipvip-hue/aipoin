@@ -1,5 +1,5 @@
 
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, Type } from "@google/genai";
 
 interface Env {
   ASSETS: { fetch: (request: Request) => Promise<Response> };
@@ -77,8 +77,10 @@ export default {
         
         const ai = new GoogleGenAI({ apiKey });
         
-        let specificInstruction = "";
-        if (mapMode === 'SEKOLAH') {
+let specificInstruction = "";
+        if (mapMode === 'UTAMA') {
+          specificInstruction = `Fokus pada statistik umum utama provinsi ini: Total Populasi, Estimasi nilai APBD terbaru, Luas Wilayah, dan persentase Pertumbuhan Ekonomi terbaru. Pada listItems berikan fokus pada ringkasan kebijakan pembangunan utama atau prioritas makro.`;
+        } else if (mapMode === 'SEKOLAH') {
           specificInstruction = `Fokus pada statistik jumlah sekolah (SD, SMP, SMA, SMK, dll), kualitas pendidikan, dan distribusi jumlah sekolah di berbagai tingkatan.`;
         } else if (mapMode === 'KOTA') {
           specificInstruction = `Fokus pada jumlah kota administrasi/otonom, nama kota terbesar, tingkat urbanisasi, dan karakteristik khusus perkotaannya.`;
@@ -86,6 +88,8 @@ export default {
           specificInstruction = `Fokus pada jumlah kabupaten, luas cakupan kabupaten, distribusi wilayah, dan potensi sumber daya dari berbagai kabupaten.`;
         } else if (mapMode === 'KECAMATAN') {
           specificInstruction = `Fokus pada jumlah total kecamatan, tantangan administratif wilayah, kepadatan kecamatan, atau persebaran pemukiman di kecamatan.`;
+        } else if (mapMode === 'KEBIJAKAN ANEH') {
+          specificInstruction = `Fokus pada peraturan daerah (Perda), wacana pemerintah lokal, atau kebijakan yang paling unik, aneh, paling kontroversial, atau tak biasa yang pernah atau sedang diterapkan di wilayah ini (seperti larangan tertentu, denda aneh, atau aturan spesifik lokal).`;
         } else {
           specificInstruction = `Fokus pada kondisi SDM, demografi umum, dan kebijakan makro.`;
         }
@@ -107,10 +111,31 @@ export default {
         
         const result = await ai.models.generateContent({
            model: selectedModel || 'gemini-3.1-flash-lite-preview',
-           contents: prompt
+           contents: prompt,
+           config: {
+             responseMimeType: "application/json",
+             responseSchema: {
+               type: Type.OBJECT,
+               properties: {
+                 title: { type: Type.STRING },
+                 stats: { 
+                   type: Type.ARRAY, 
+                   items: { 
+                     type: Type.OBJECT, 
+                     properties: { label: { type: Type.STRING }, value: { type: Type.STRING } },
+                     required: ["label", "value"]
+                   } 
+                 },
+                 listTitle: { type: Type.STRING },
+                 listItems: { type: Type.ARRAY, items: { type: Type.STRING } },
+                 summary: { type: Type.STRING }
+               },
+               required: ["title", "stats", "listTitle", "listItems", "summary"]
+             }
+           }
         });
         const text = result.text || "";
-        const cleanJson = text.replace(/```json|```/g, "").trim();
+        const cleanJson = text;
         const data = JSON.parse(cleanJson);
         
         return new Response(JSON.stringify(data), {

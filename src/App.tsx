@@ -72,7 +72,7 @@ export default function App() {
   const [chatHistory, setChatHistory] = useState<{ role: 'user' | 'ai'; text: string }[]>([]);
   const [isChatLoading, setIsChatLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('Network Map');
-  const [mapMode, setMapMode] = useState('PETA SDM');
+  const [mapMode, setMapMode] = useState('UTAMA');
 
   // --- Settings & Sidebar Resize ---
   const [isNavOpen, setIsNavOpen] = useState(false);
@@ -400,7 +400,10 @@ export default function App() {
            </div>
 
            {/* Overlay HUD controls */}
-           <div className="absolute bottom-6 right-6 z-40 grid grid-cols-2 gap-2">
+           <div className="absolute bottom-6 right-6 z-40 grid grid-cols-3 gap-2">
+             <MapBtn 
+                label="Utama" active={mapMode === 'UTAMA'} onClick={() => setMapMode('UTAMA')} 
+                activeClass="bg-blue-600 border-blue-500 text-white shadow-blue-600/20" />
              <MapBtn 
                 label="Sekolah" active={mapMode === 'SEKOLAH'} onClick={() => setMapMode('SEKOLAH')} 
                 activeClass="bg-rose-600 border-rose-500 text-white shadow-rose-600/20" />
@@ -413,6 +416,9 @@ export default function App() {
              <MapBtn 
                 label="Kecamatan" active={mapMode === 'KECAMATAN'} onClick={() => setMapMode('KECAMATAN')} 
                 activeClass="bg-indigo-600 border-indigo-500 text-white shadow-indigo-600/20" />
+             <MapBtn 
+                label="Kebijakan Aneh" active={mapMode === 'KEBIJAKAN ANEH'} onClick={() => setMapMode('KEBIJAKAN ANEH')} 
+                activeClass="bg-fuchsia-600 border-fuchsia-500 text-white shadow-fuchsia-600/20" />
            </div>
 
         </div>
