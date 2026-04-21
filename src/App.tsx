@@ -400,7 +400,7 @@ export default function App() {
            </div>
 
            {/* Overlay HUD controls */}
-           <div className="absolute bottom-6 right-6 z-40 grid grid-cols-3 gap-2">
+           <div className="absolute bottom-6 left-2 right-2 md:left-auto md:right-6 mx-auto w-full max-w-[95%] md:w-auto md:max-w-none z-40 grid grid-cols-3 gap-1.5 md:gap-2">
              <MapBtn 
                 label="Utama" active={mapMode === 'UTAMA'} onClick={() => setMapMode('UTAMA')} 
                 activeClass="bg-blue-600 border-blue-500 text-white shadow-blue-600/20" />
@@ -723,7 +723,7 @@ function MapBtn({ label, active = false, onClick, activeClass = "bg-indigo-600 b
     <button 
       onClick={onClick}
       className={cn(
-      "px-4 py-3 md:py-2 border rounded-xl text-[10px] font-black transition-all uppercase tracking-widest shadow-xl cursor-pointer active:scale-95",
+      "px-1 md:px-4 py-2 border rounded-xl text-[8.5px] md:text-[10px] font-black transition-all uppercase tracking-wider md:tracking-widest shadow-xl cursor-pointer active:scale-95 flex items-center justify-center text-center leading-tight break-words h-12 md:h-auto min-w-0",
       active 
         ? activeClass
         : "bg-zinc-950/95 border-white/10 text-zinc-500 hover:text-white hover:bg-zinc-900"
