@@ -22,34 +22,76 @@ export default {
       }
     }
 
-    // AI POST /api/region
-    if (request.method === 'POST' && url.pathname === '/api/region') {
+    // AI POST /api/ping
+    if (request.method === 'POST' && url.pathname === '/api/ping') {
       try {
-        const body = await request.json() as { provinceName: string };
-        const { provinceName } = body;
-        
         let apiKey = env.GEMINI_API_KEY;
         if (!apiKey) {
            const obj = await env.VPSAI_BUCKET.get('gemini_api_key');
            if (obj) apiKey = await obj.text();
         }
-        
+
         if (!apiKey) {
-          return new Response(JSON.stringify({ error: "API Key not found." }), { status: 401, headers: { 'Content-Type': 'application/json' }});
+          return new Response(JSON.stringify({ error: "API Key not found in R2." }), { status: 401, headers: { 'Content-Type': 'application/json' }});
         }
         
         const ai = new GoogleGenAI({ apiKey });
-        const prompt = `Cari dan analisis data kebijakan pemerintah, anggaran (APBD), dan peraturan terbaru untuk provinsi "${provinceName}" di Indonesia tahun 2024-2025.
-        Sumber harus dipercaya. Kembalikan data dalam format JSON yang berisi:
-        - province: Nama provinsi
-        - budget: Estimasi total APBD terbaru
-        - population: Estimasi populasi
-        - growth: Pertumbuhan ekonomi
-        - policies: Daftar 3-5 kebijakan strategis utama saat ini
-        - summary: Ringkasan singkat (1-2 paragraf) tentang fokus pembangunan di wilayah ini.`;
+        await ai.models.generateContent({
+           model: 'gemini-1.5-flash',
+           contents: "Test connection ping. Reply simply with 'OK'."
+        });
+        return new Response(JSON.stringify({ status: "success" }), { headers: { 'Content-Type': 'application/json' }});
+      } catch (err: any) {
+        return new Response(JSON.stringify({ error: err.message }), { status: 500, headers: { 'Content-Type': 'application/json' }});
+      }
+    }
+
+    // AI POST /api/region
+    if (request.method === 'POST' && url.pathname === '/api/region') {
+      try {
+        const body = await request.json() as { provinceName: string, selectedModel: string };
+        const { provinceName, selectedModel } = body;
+        
+        let apiKey = env.GEMINI_API_KEY;
+        console.log("Checking API key in env:", !!apiKey);
+        if (!apiKey) {
+           console.log("Checking API key in R2 bucket 'vpsai'...");
+           try {
+             const obj = await env.VPSAI_BUCKET.get('gemini_api_key');
+             if (obj) {
+               apiKey = await obj.text();
+               console.log("Found key in R2! Key length:", apiKey?.length);
+             } else {
+               console.log("No key found in R2 bucket.");
+             }
+           } catch (e) {
+             console.error("Error fetching from R2:", e);
+           }
+        }
+        
+        if (!apiKey) {
+          console.error("API Key not found in environment or R2.");
+          return new Response(JSON.stringify({ error: "API Key not found. Please check Cloudflare Worker Logs for details." }), { status: 401, headers: { 'Content-Type': 'application/json' }});
+        }
+        
+        const ai = new GoogleGenAI({ apiKey });
+        const prompt = `Cari dan analisis data kebijakan pemerintah, anggaran (APBD), dan peraturan terbaru untuk provinsi "${provinceName}" di Indonesia.
+      Kembalikan data HANYA dalam format JSON valid yang berisi:
+      {
+        "province": "Nama provinsi",
+        "budget": "Estimasi total APBD terbaru",
+        "population": "Estimasi populasi",
+        "popPercentage": "Persentase populasi dari total Indonesia",
+        "area": "Luas wilayah",
+        "totalKab": "Total kabupaten",
+        "totalKec": "Total kecamatan",
+        "growth": "Pertumbuhan ekonomi",
+        "policies": ["Kebijakan 1", "Kebijakan 2", "Kebijakan 3"],
+        "summary": "Ringkasan fokus pembangunan (2 paragraf)"
+      }`;
         
         const result = await ai.models.generateContent({
-           model: 'gemini-1.5-flash',
+           model: selectedModel || 'gemini-1.5-flash',
            contents: prompt
         });
         const text = result.text || "";
@@ -67,8 +109,8 @@ export default {
     // AI POST /api/chat
     if (request.method === 'POST' && url.pathname === '/api/chat') {
       try {
-        const body = await request.json() as { userText: string, selectedRegion: string };
-        const { userText, selectedRegion } = body;
+        const body = await request.json() as { userText: string, selectedRegion: string, selectedModel: string };
+        const { userText, selectedRegion, selectedModel } = body;
         
         let apiKey = env.GEMINI_API_KEY;
         if (!apiKey) {
@@ -81,11 +123,12 @@ export default {
         }
         
         const ai = new GoogleGenAI({ apiKey });
-        const prompt = `Kamu adalah asisten ahli DATA SDM INDONESIA. Pengguna bertanya tentang: "${userText}" 
-        terkait wilayah "${selectedRegion || 'Indonesia'}". Berikan jawaban yang akurat berdasarkan data kebijakan publik dan SDM terbaru.`;
+        const prompt = `Kamu adalah asisten cerdas yang sangat ramah dan santai, berfungsi dalam Sistem DATA SDM INDONESIA. Pengguna bertanya tentang: "${userText}". 
+        Konteks wilayah saat ini: "${selectedRegion || 'Indonesia'}". 
+        Gunakan bahasa yang natural, tidak kaku, inspiratif, dan informatif saat menjawab. Hindari gaya bicara robotik. Jika ada data spesifik wilayah, gunakan itu sebagai acuan utama.`;
         
         const result = await ai.models.generateContent({
-           model: 'gemini-1.5-flash',
+           model: selectedModel || 'gemini-1.5-flash',
            contents: prompt
         });
         return new Response(JSON.stringify({ text: result.text || "" }), {

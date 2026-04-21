@@ -103,37 +103,31 @@ export default function App() {
   const GEMINI_KEY = process.env.GEMINI_API_KEY;
   const activeApiKey = localApiKey || GEMINI_KEY;
   
-  // Conditionally apply API key only if it exists
-  const ai = useMemo(() => {
-    try {
-      if (!activeApiKey || activeApiKey === 'N/A') return null;
-      return new GoogleGenAI({ apiKey: activeApiKey });
-    } catch {
-      return null;
-    }
-  }, [activeApiKey]);
-
+  // Ping test
   useEffect(() => {
-    if (!ai) {
-      setApiKeyStatus('invalid');
-      setApiKeyErrorLog("API Key tidak ditemukan. Harap masukkan kunci Gemini AI di profil pengaturan.");
-      return;
-    }
     setApiKeyStatus('testing');
     setApiKeyErrorLog(null);
-    ai.models.generateContent({
-      model: selectedModel,
-      contents: "Test connection ping. Reply simply with 'OK'."
+    
+    fetch('/api/ping', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
     })
-      .then(() => {
-        setApiKeyStatus('valid');
-        setApiKeyErrorLog(null);
+      .then(res => res.json().then(data => ({ res, data })))
+      .then(({ res, data }) => {
+        if (res.ok) {
+          setApiKeyStatus('valid');
+          setApiKeyErrorLog(null);
+        } else {
+          setApiKeyStatus('invalid');
+          setApiKeyErrorLog(data.error || "Kesalahan koneksi.");
+        }
       })
       .catch((err) => {
         setApiKeyStatus('invalid');
-        setApiKeyErrorLog(err?.message || "Kesalahan koneksi ke server Gemini. Harap periksa kunci API.");
+        setApiKeyErrorLog(err?.message || "Gagal menghubungi backend.");
       });
-  }, [activeApiKey, selectedModel]);
+  }, [selectedModel]);
+
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       if (!isResizing) return;
@@ -163,61 +157,37 @@ export default function App() {
     setAiData(null);
     setIsSidebarOpen(true);
 
-    if (!ai) {
-      console.warn("Gemini API key is not configured.");
+    try {
+      const response = await fetch('/api/region', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ provinceName, selectedModel })
+      });
+      
+      const dataStr = await response.text();
+      let data;
+      try { data = JSON.parse(dataStr); } catch (e) { data = { error: "Invalid JSON response" }; }
+
+      if (!response.ok) {
+        throw new Error(data.error || "Gagal menghubungi backend AI");
+      }
+      
+      setAiData(data);
+      setChatHistory([{ role: 'ai', text: `Halo! Saya telah menganalisis data untuk **${provinceName}**. Ada kebijakan atau data spesifik lain yang ingin Anda ketahui?` }]);
+    } catch (error: any) {
+      console.error("AI Error:", error);
+      // Fallback
       setAiData({
         province: provinceName,
         budget: "Akses Dibatasi",
         population: "Akses Dibatasi",
         growth: "Akses Dibatasi",
-        policies: ["Harap atur API Key di Pengaturan (Bawah Kiri)"],
-        summary: "Sistem membutuhkan API Key Gemini yang valid untuk beroperasi penuh."
-      });
-      setIsLoading(false);
-      return;
-    }
-
-    try {
-      const prompt = `Cari dan analisis data kebijakan pemerintah, anggaran (APBD), dan peraturan terbaru untuk provinsi "${provinceName}" di Indonesia.
-      Kembalikan data HANYA dalam format JSON valid yang berisi:
-      {
-        "province": "Nama provinsi",
-        "budget": "Estimasi total APBD terbaru",
-        "population": "Estimasi populasi",
-        "popPercentage": "Persentase populasi dari total Indonesia",
-        "area": "Luas wilayah",
-        "totalKab": "Total kabupaten",
-        "totalKec": "Total kecamatan",
-        "growth": "Pertumbuhan ekonomi",
-        "policies": ["Kebijakan 1", "Kebijakan 2", "Kebijakan 3"],
-        "summary": "Ringkasan fokus pembangunan (2 paragraf)"
-      }`;
-
-      const result = await ai.models.generateContent({
-        model: selectedModel,
-        contents: prompt
-      });
-      
-      const text = result.text || "";
-      const cleanJson = text.replace(/```json|```/g, "").trim();
-      const data = JSON.parse(cleanJson);
-      
-      setAiData(data);
-      setChatHistory([{ role: 'ai', text: `Halo! Saya telah menganalisis data untuk **${provinceName}**. Ada kebijakan atau data spesifik lain yang ingin Anda ketahui?` }]);
-    } catch (error) {
-      console.error("AI Error:", error);
-      // Fallback
-      setAiData({
-        province: provinceName,
-        budget: "Data sedang diperbarui",
-        population: "Akses terbatas",
-        growth: "Stabil",
-        policies: ["Pembangunan Infrastruktur", "Digitalisasi Layanan"],
-        summary: "Gagal menyambung ke server AI. Memuat data fallback dari memori lokal sementara koneksi pulih.",
-        area: "N/A",
-        popPercentage: "N/A",
-        totalKab: "N/A",
-        totalKec: "N/A"
+        policies: ["Harap atur Kunci API di Pengaturan (Bawah Kiri)"],
+        summary: error.message || "Gagal menyambung ke server AI.",
+        area: "Tidak tersedia",
+        popPercentage: "Tidak tersedia",
+        totalKab: "Tidak tersedia",
+        totalKec: "Tidak tersedia"
       });
     } finally {
       setIsLoading(false);
@@ -228,31 +198,26 @@ export default function App() {
     e.preventDefault();
     if (!chatInput.trim()) return;
 
-    if (!ai) {
-      setChatHistory(prev => [...prev, { role: 'ai', text: "Mohon atur GEMINI API KEY di Pengaturan (Bawah Kiri) untuk menggunakan asisten AI." }]);
-      return;
-    }
-
     const userText = chatInput;
     setChatInput("");
     setChatHistory(prev => [...prev, { role: 'user', text: userText }]);
     setIsChatLoading(true);
 
     try {
-      // Allow general conversation but specialized in Indonesia Data if unspecified. Translation explicitly supported.
-        const prompt = `Kamu adalah asisten cerdas yang sangat ramah dan santai, berfungsi dalam Sistem DATA SDM INDONESIA. Pengguna bertanya tentang: "${userText}". 
-        Konteks wilayah saat ini: "${selectedRegion || 'Indonesia'}". 
-        Gunakan bahasa yang natural, tidak kaku, inspiratif, dan informatif saat menjawab. Hindari gaya bicara robotik. Jika ada data spesifik wilayah, gunakan itu sebagai acuan utama.`;
-
-      const result = await ai.models.generateContent({
-        model: selectedModel,
-        contents: prompt
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userText, selectedRegion, selectedModel })
       });
+      const data = await response.json();
       
-      console.log(result.text); // Recommended debug output layer per reference.
-      setChatHistory(prev => [...prev, { role: 'ai', text: result.text || "Saya tidak yakin." }]);
-    } catch (e) {
-      setChatHistory(prev => [...prev, { role: 'ai', text: "Terjadi kesalahan koneksi ke backend AI." }]);
+      if (!response.ok) {
+        throw new Error(data.error || "Gagal menghubungi backend AI");
+      }
+      
+      setChatHistory(prev => [...prev, { role: 'ai', text: data.text || "Saya tidak yakin." }]);
+    } catch (e: any) {
+      setChatHistory(prev => [...prev, { role: 'ai', text: "Terjadi kesalahan koneksi ke backend AI: " + e.message }]);
     } finally {
       setIsChatLoading(false);
     }
