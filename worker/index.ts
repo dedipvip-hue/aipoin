@@ -134,10 +134,18 @@ export default {
           specificInstruction = `Fokus pada kondisi SDM, demografi umum, dan kebijakan makro.`;
         }
 
-        const prompt = `Analisis provinsi "${provinceName}" di Indonesia. ${specificInstruction}
-      Kembalikan data HANYA dalam format JSON valid yang berisi persis struktur berikut:
+        const prompt = `Anda adalah Asisten AI Spesialis Data Regional Indonesia.
+Tugas Anda adalah menganalisis provinsi: "${provinceName}".
+
+⚠️ PERHATIAN SANGAT PENTING ⚠️
+FOKUS ANALISIS SAAT INI ADALAH TENTANG: **${mapMode}**.
+${specificInstruction}
+
+JANGAN berikan analisis umum jika fokus yang diminta adalah hal lain. Jika fokusnya adalah SEKOLAH, seluruh data statistik, list, dan summary HARUS murni membahas sekolah, pendidikan, siswa, guru, dll. Demikian pula untuk fokus lainnya.
+
+Kembalikan data HANYA dalam format JSON valid yang berisi persis struktur berikut:
       {
-        "title": "Nama Provinsi",
+        "title": "${provinceName} - Topik: ${mapMode}",
         "stats": [
           { "label": "Nama Stat 1 (cth: Total Sekolah / Total Kota / dll)", "value": "Angka/Nilai" },
           { "label": "Nama Stat 2", "value": "Angka/Nilai" },
