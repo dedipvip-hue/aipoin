@@ -110,7 +110,8 @@ export default function App() {
     
     fetch('/api/ping', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' }
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ selectedModel })
     })
       .then(res => res.json().then(data => ({ res, data })))
       .then(({ res, data }) => {

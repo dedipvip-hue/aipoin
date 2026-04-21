@@ -25,6 +25,7 @@ export default {
     // AI POST /api/ping
     if (request.method === 'POST' && url.pathname === '/api/ping') {
       try {
+        const body = await request.json() as { selectedModel?: string };
         let apiKey = env.GEMINI_API_KEY;
         if (!apiKey) {
            const obj = await env.VPSAI_BUCKET.get('gemini_api_key');
@@ -37,7 +38,7 @@ export default {
         
         const ai = new GoogleGenAI({ apiKey });
         await ai.models.generateContent({
-           model: 'gemini-1.5-flash',
+           model: body.selectedModel || 'gemini-3.1-flash-lite-preview',
            contents: "Test connection ping. Reply simply with 'OK'."
         });
         return new Response(JSON.stringify({ status: "success" }), { headers: { 'Content-Type': 'application/json' }});
@@ -91,7 +92,7 @@ export default {
       }`;
         
         const result = await ai.models.generateContent({
-           model: selectedModel || 'gemini-1.5-flash',
+           model: selectedModel || 'gemini-3.1-flash-lite-preview',
            contents: prompt
         });
         const text = result.text || "";
@@ -128,7 +129,7 @@ export default {
         Gunakan bahasa yang natural, tidak kaku, inspiratif, dan informatif saat menjawab. Hindari gaya bicara robotik. Jika ada data spesifik wilayah, gunakan itu sebagai acuan utama.`;
         
         const result = await ai.models.generateContent({
-           model: selectedModel || 'gemini-1.5-flash',
+           model: selectedModel || 'gemini-3.1-flash-lite-preview',
            contents: prompt
         });
         return new Response(JSON.stringify({ text: result.text || "" }), {
