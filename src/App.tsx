@@ -400,11 +400,19 @@ export default function App() {
            </div>
 
            {/* Overlay HUD controls */}
-           <div className="absolute bottom-6 right-6 z-40 flex flex-col gap-2">
-             <MapBtn label="Sekolah" active={mapMode === 'SEKOLAH'} onClick={() => setMapMode('SEKOLAH')} />
-             <MapBtn label="Kota" active={mapMode === 'KOTA'} onClick={() => setMapMode('KOTA')} />
-             <MapBtn label="Kabupaten" active={mapMode === 'KABUPATEN'} onClick={() => setMapMode('KABUPATEN')} />
-             <MapBtn label="Kecamatan" active={mapMode === 'KECAMATAN'} onClick={() => setMapMode('KECAMATAN')} />
+           <div className="absolute bottom-6 right-6 z-40 grid grid-cols-2 gap-2">
+             <MapBtn 
+                label="Sekolah" active={mapMode === 'SEKOLAH'} onClick={() => setMapMode('SEKOLAH')} 
+                activeClass="bg-rose-600 border-rose-500 text-white shadow-rose-600/20" />
+             <MapBtn 
+                label="Kota" active={mapMode === 'KOTA'} onClick={() => setMapMode('KOTA')} 
+                activeClass="bg-emerald-600 border-emerald-500 text-white shadow-emerald-600/20" />
+             <MapBtn 
+                label="Kabupaten" active={mapMode === 'KABUPATEN'} onClick={() => setMapMode('KABUPATEN')} 
+                activeClass="bg-amber-600 border-amber-500 text-white shadow-amber-600/20" />
+             <MapBtn 
+                label="Kecamatan" active={mapMode === 'KECAMATAN'} onClick={() => setMapMode('KECAMATAN')} 
+                activeClass="bg-indigo-600 border-indigo-500 text-white shadow-indigo-600/20" />
            </div>
 
         </div>
@@ -704,14 +712,14 @@ function StatBox({ label, value, color = "bg-zinc-900 border-t-indigo-500/30" }:
   );
 }
 
-function MapBtn({ label, active = false, onClick }: { label: string, active?: boolean, onClick?: () => void }) {
+function MapBtn({ label, active = false, onClick, activeClass = "bg-indigo-600 border-indigo-500 text-white shadow-indigo-600/20" }: { label: string, active?: boolean, onClick?: () => void, activeClass?: string }) {
   return (
     <button 
       onClick={onClick}
       className={cn(
       "px-4 py-3 md:py-2 border rounded-xl text-[10px] font-black transition-all uppercase tracking-widest shadow-xl cursor-pointer active:scale-95",
       active 
-        ? "bg-indigo-600 border-indigo-500 text-white shadow-indigo-600/20" 
+        ? activeClass
         : "bg-zinc-950/95 border-white/10 text-zinc-500 hover:text-white hover:bg-zinc-900"
     )}>
       {label}
