@@ -77,6 +77,9 @@ export default function App() {
   // --- Settings & Sidebar Resize ---
   const [isNavOpen, setIsNavOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const [localApiKey, setLocalApiKey] = useState("");
   const availableModels = [
     'gemini-3-flash-preview',
@@ -86,15 +89,71 @@ export default function App() {
     'gemini-1.5-pro',
     'gemini-2.0-flash'
   ];
-  const [selectedModel, setSelectedModel] = useState(availableModels[0]);
+  const [selectedModel, setSelectedModel] = useState('gemini-3.1-flash-lite-preview');
   const [sidebarWidth, setSidebarWidth] = useState(256); // 256px
   const [isResizing, setIsResizing] = useState(false);
   const [geoJsonData, setGeoJsonData] = useState<any>(null);
   const [apiKeyStatus, setApiKeyStatus] = useState<'idle'|'testing'|'valid'|'invalid'>('idle');
   const [apiKeyErrorLog, setApiKeyErrorLog] = useState<string | null>(null);
+  
+  const [apiKeysList, setApiKeysList] = useState<{keyId: string, masked: string}[]>([]);
+  const [envKeyInfo, setEnvKeyInfo] = useState<{keyId: string, masked: string} | null>(null);
+  const [newKeyInput, setNewKeyInput] = useState("");
+  const [isSavingKey, setIsSavingKey] = useState(false);
 
   const GEMINI_KEY = process.env.GEMINI_API_KEY;
   const activeApiKey = localApiKey || GEMINI_KEY;
+  
+  // Load API keys when settings opened
+  useEffect(() => {
+    if (isSettingsOpen) {
+      fetch('/api/keys')
+        .then(res => res.json())
+        .then((data: any) => {
+          if (data.keys) setApiKeysList(data.keys);
+          if (data.envKey) setEnvKeyInfo(data.envKey);
+        })
+        .catch(err => console.error(err));
+    }
+  }, [isSettingsOpen]);
+
+  const handleSaveNewKey = async () => {
+    if (!newKeyInput.trim()) return;
+    setIsSavingKey(true);
+    try {
+      await fetch('/api/keys', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ apiKey: newKeyInput.trim() })
+      });
+      setNewKeyInput("");
+      
+      // refresh list
+      const res = await fetch('/api/keys');
+      const data: any = await res.json();
+      setApiKeysList(data.keys || []);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsSavingKey(false);
+      setApiKeyStatus('idle'); // force ping restart
+    }
+  };
+
+  const handleDeleteKey = async (keyId: string) => {
+    try {
+      await fetch('/api/keys', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ keyId })
+      });
+      const res = await fetch('/api/keys');
+      const data: any = await res.json();
+      setApiKeysList(data.keys || []);
+    } catch(e) {
+      console.error(e);
+    }
+  };
   
   // Ping test
   useEffect(() => {
@@ -145,6 +204,36 @@ export default function App() {
       .then(data => setGeoJsonData(data))
       .catch(err => console.error("Failed to load map data", err));
   }, []);
+
+  useEffect(() => {
+    if (isSearchOpen && searchInputRef.current) {
+      searchInputRef.current.focus();
+    }
+  }, [isSearchOpen]);
+
+  const filteredRegions = useMemo(() => {
+    if (!geoJsonData || !searchQuery) return [];
+    
+    // @ts-ignore
+    if (!geoJsonData.features) return [];
+    
+    const provinces = new Set<string>();
+    // @ts-ignore
+    geoJsonData.features.forEach((f: any) => {
+       const name = f?.properties?.Propinsi || f?.properties?.name;
+       if (name) {
+         const formattedName = name.toLowerCase().split(' ').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+         provinces.add(formattedName);
+       }
+    });
+    return Array.from(provinces).filter(p => p.toLowerCase().includes(searchQuery.toLowerCase())).slice(0, 5);
+  }, [geoJsonData, searchQuery]);
+
+  const handleSearchSelect = (regionName: string) => {
+    setSearchQuery("");
+    setIsSearchOpen(false);
+    onRegionClick(regionName);
+  };
 
   const fetchRegionalInfo = async (provinceName: string) => {
     setIsLoading(true);
@@ -306,9 +395,6 @@ export default function App() {
           </div>
           
           <div className="flex items-center gap-4">
-            <div className="hidden sm:block p-2 bg-indigo-600/10 border border-indigo-500/20 rounded-lg text-[10px] font-bold text-indigo-400">
-              SDM INDEX: 74.39
-            </div>
             
             <button 
               onClick={() => setIsSidebarOpen(true)}
@@ -318,9 +404,57 @@ export default function App() {
               <Sparkles className="w-5 h-5 text-indigo-400" />
             </button>
             
-            <button className="p-2 text-zinc-500 hover:text-white transition-colors cursor-pointer rounded-lg hover:bg-white/10">
-              <Search className="w-5 h-5" />
-            </button>
+            <div className="relative">
+              <button 
+                onClick={() => setIsSearchOpen(!isSearchOpen)}
+                className="p-2 text-zinc-500 hover:text-white transition-colors cursor-pointer rounded-lg hover:bg-white/10"
+              >
+                {isSearchOpen ? <X className="w-5 h-5" /> : <Search className="w-5 h-5" />}
+              </button>
+
+              <AnimatePresence>
+                {isSearchOpen && (
+                  <motion.div 
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -10 }}
+                    className="absolute right-0 top-full mt-2 w-64 md:w-80 bg-zinc-900 border border-white/10 rounded-xl shadow-2xl p-2 z-[100]"
+                  >
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+                      <input 
+                        ref={searchInputRef}
+                        type="text" 
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        placeholder="Cari provinsi..."
+                        className="w-full bg-zinc-950 border border-white/5 rounded-lg pl-9 pr-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500/50 transition-colors placeholder:text-zinc-600"
+                      />
+                    </div>
+                    
+                    {searchQuery && (
+                      <div className="mt-2 flex flex-col gap-1 max-h-48 overflow-y-auto custom-scrollbar">
+                        {filteredRegions.length > 0 ? (
+                          filteredRegions.map((region) => (
+                            <button
+                              key={region}
+                              onClick={() => handleSearchSelect(region)}
+                              className="text-left px-3 py-2 text-sm text-zinc-300 hover:bg-white/5 hover:text-white rounded-md transition-colors truncate"
+                            >
+                              {region}
+                            </button>
+                          ))
+                        ) : (
+                          <div className="px-3 py-4 text-center text-xs text-zinc-500">
+                            Tidak ditemukan
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
           </div>
         </header>
 
@@ -448,7 +582,9 @@ export default function App() {
                   <div className="w-10 h-10 rounded-xl bg-indigo-600/10 flex items-center justify-center border border-indigo-500/20">
                     <Sparkles className="w-5 h-5 text-indigo-400" />
                   </div>
-                  <h3 className="font-bold text-white text-xl tracking-tight">AI Policy Research</h3>
+                  <h3 className="font-black text-transparent bg-clip-text bg-gradient-to-r from-rose-500 via-fuchsia-500 to-indigo-500 text-xl tracking-tighter truncate leading-tight pb-1">
+                    PUSAT DANA NASIONAL
+                  </h3>
                 </div>
                 <button onClick={() => setIsSidebarOpen(false)} className="p-3 text-zinc-500 hover:text-white transition-colors cursor-pointer">
                   <X className="w-6 h-6" />
@@ -605,22 +741,75 @@ export default function App() {
                   <div className="space-y-3">
                     <div className="flex items-center justify-between">
                       <label className="block text-xs font-bold text-zinc-400 uppercase tracking-widest">
-                        Gemini API Key
+                        Kelola API Keys (Gemini)
                       </label>
                       <div className="flex items-center gap-1.5">
                         {apiKeyStatus === 'testing' && <Loader2 className="w-3 h-3 text-zinc-400 animate-spin" />}
                         {apiKeyStatus === 'valid' && <><CheckCircle2 className="w-3 h-3 text-emerald-500" /><span className="text-[10px] text-emerald-500 font-bold uppercase">Connected</span></>}
-                        {apiKeyStatus === 'invalid' && <><XCircle className="w-3 h-3 text-red-500" /><span className="text-[10px] text-red-500 font-bold uppercase">Disconnected</span></>}
+                        {apiKeyStatus === 'invalid' && <><XCircle className="w-3 h-3 text-red-500" /><span className="text-[10px] text-red-500 font-bold uppercase">Limit / Error</span></>}
                       </div>
                     </div>
-                    <input 
-                      type="password"
-                      placeholder={GEMINI_KEY && GEMINI_KEY !== 'N/A' ? "Using preset GEMINI_API_KEY" : "Enter your AI Studio API Key..."}
-                      value={localApiKey}
-                      onChange={(e) => setLocalApiKey(e.target.value)}
-                      className="w-full bg-zinc-950 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-mono"
-                    />
-                    <p className="text-[10px] text-zinc-500">Leave blank to use environment variable default.</p>
+                    
+                    <div className="flex gap-2">
+                       <input 
+                         type="password"
+                         placeholder="Tambah kunci API baru..."
+                         value={newKeyInput}
+                         onChange={(e) => setNewKeyInput(e.target.value)}
+                         className="flex-1 bg-zinc-950 border border-white/5 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-indigo-500/50 transition-colors placeholder:text-zinc-600"
+                       />
+                       <button
+                         onClick={handleSaveNewKey}
+                         disabled={isSavingKey || !newKeyInput.trim()}
+                         className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:bg-zinc-800 disabled:text-zinc-600 rounded-xl text-xs font-bold text-white transition-colors flex items-center justify-center shrink-0 cursor-pointer"
+                       >
+                         {isSavingKey ? <Loader2 className="w-4 h-4 animate-spin" /> : "Simpan"}
+                       </button>
+                    </div>
+
+                    <div className="mt-4 border border-white/10 rounded-xl overflow-hidden bg-zinc-950/50">
+                       <div className="bg-zinc-900/80 px-4 py-2 border-b border-white/5 text-[10px] font-black uppercase text-zinc-500 tracking-wider">
+                         Daftar Kunci Tersimpan
+                       </div>
+                       <div className="divide-y divide-white/5 max-h-40 overflow-y-auto custom-scrollbar">
+                         {envKeyInfo && (
+                           <div className="px-4 py-3 flex items-center justify-between">
+                              <div className="flex items-center gap-3">
+                                <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                                <code className="font-mono text-xs text-zinc-300">{envKeyInfo.masked}</code>
+                                <span className="text-[8px] bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded-full uppercase border border-emerald-500/20">ENV Default</span>
+                              </div>
+                           </div>
+                         )}
+                         {apiKeysList.map((k) => (
+                           <div key={k.keyId} className="px-4 py-3 flex items-center justify-between group hover:bg-white/5 transition-colors">
+                              <div className="flex items-center gap-3">
+                                {k.keyId === 'env' ? (
+                                    <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                                ) : (
+                                    <span className="w-2 h-2 rounded-full bg-indigo-500"></span>
+                                )}
+                                <code className="font-mono text-xs text-zinc-300">{k.masked}</code>
+                                {k.keyId === 'env' && <span className="text-[8px] bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded-full uppercase border border-emerald-500/20">ENV Default</span>}
+                              </div>
+                              {k.keyId !== 'env' && (
+                                <button 
+                                  onClick={() => handleDeleteKey(k.keyId)}
+                                  className="text-zinc-600 hover:text-red-400 p-1 rounded transition-colors opacity-0 group-hover:opacity-100 cursor-pointer"
+                                  title="Hapus Key"
+                                >
+                                  <X className="w-4 h-4" />
+                                </button>
+                              )}
+                           </div>
+                         ))}
+                         {apiKeysList.length === 0 && !envKeyInfo && (
+                           <div className="p-4 text-center text-xs text-zinc-500 italic">
+                             Belum ada kunci tersimpan
+                           </div>
+                         )}
+                       </div>
+                    </div>
                   </div>
 
                   <div className="space-y-3">

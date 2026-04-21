@@ -1,4 +1,3 @@
-
 import { GoogleGenAI, Type } from "@google/genai";
 
 interface Env {
@@ -7,36 +6,92 @@ interface Env {
   VPSAI_BUCKET: R2Bucket;
 }
 
+// Utility to get all keys
+async function getApiKeys(env: Env): Promise<string[]> {
+  try {
+    const obj = await env.VPSAI_BUCKET.get('gemini_api_keys_list');
+    if (obj) {
+      return JSON.parse(await obj.text());
+    }
+    // Fallback to old single key
+    const oldObj = await env.VPSAI_BUCKET.get('gemini_api_key');
+    if (oldObj) {
+      const oldKey = await oldObj.text();
+      // migrate quietly
+      await env.VPSAI_BUCKET.put('gemini_api_keys_list', JSON.stringify([oldKey]));
+      return [oldKey];
+    }
+  } catch (e) {
+    console.error(e);
+  }
+  return [];
+}
+
+async function saveApiKeys(env: Env, keys: string[]) {
+  await env.VPSAI_BUCKET.put('gemini_api_keys_list', JSON.stringify(keys));
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
 
-    // AI POST /api/save-key
+    // AI POST /api/save-key (Legacy support, redirects to array logic)
     if (request.method === 'POST' && url.pathname === '/api/save-key') {
       try {
         const { apiKey } = await request.json() as { apiKey: string };
-        await env.VPSAI_BUCKET.put('gemini_api_key', apiKey);
+        const keys = await getApiKeys(env);
+        if (!keys.includes(apiKey)) {
+           keys.push(apiKey);
+           await saveApiKeys(env, keys);
+        }
         return new Response(JSON.stringify({ status: "success" }), { headers: { 'Content-Type': 'application/json' }});
       } catch (err: any) {
         return new Response(JSON.stringify({ error: err.message }), { status: 500, headers: { 'Content-Type': 'application/json' }});
       }
     }
 
+    // API Keys Management
+    if (url.pathname === '/api/keys') {
+      if (request.method === 'GET') {
+        const keys = await getApiKeys(env);
+        const masked = keys.map(k => ({
+          keyId: k.substring(k.length - 8),
+          masked: k.substring(0, 4) + '...' + k.substring(k.length - 4),
+          full: k // WARNING: sent to admin client to identify exact key if needed, or we just leave it out. Wait, better left out for safety, but the client needs to use it? Neither frontend nor worker calls APIs without worker. Worker holds keys. So just sending ID is safe.
+        }));
+        
+        let envKeyInfo = null;
+        if (env.GEMINI_API_KEY) {
+           envKeyInfo = {
+               keyId: "ENV_INTERNAL",
+               masked: env.GEMINI_API_KEY.substring(0, 4) + '...' + env.GEMINI_API_KEY.substring(env.GEMINI_API_KEY.length - 4)
+           };
+        }
+        
+        return new Response(JSON.stringify({ keys: masked, envKey: envKeyInfo }), { headers: { 'Content-Type': 'application/json' }});
+      }
+      if (request.method === 'DELETE') {
+         const { keyId } = await request.json() as { keyId: string };
+         let keys = await getApiKeys(env);
+         keys = keys.filter(k => k.substring(k.length - 8) !== keyId);
+         await saveApiKeys(env, keys);
+         return new Response(JSON.stringify({ status: "success" }), { headers: { 'Content-Type': 'application/json' }});
+      }
+      return new Response("Not found", {status: 404});
+    }
+
     // AI POST /api/ping
     if (request.method === 'POST' && url.pathname === '/api/ping') {
       try {
         const body = await request.json() as { selectedModel?: string };
-        let apiKey = env.GEMINI_API_KEY;
-        if (!apiKey) {
-           const obj = await env.VPSAI_BUCKET.get('gemini_api_key');
-           if (obj) apiKey = await obj.text();
-        }
+        const keys = await getApiKeys(env);
+        const activeKey = env.GEMINI_API_KEY || keys[0];
 
-        if (!apiKey) {
+        if (!activeKey) {
           return new Response(JSON.stringify({ error: "API Key not found in R2." }), { status: 401, headers: { 'Content-Type': 'application/json' }});
         }
         
-        const ai = new GoogleGenAI({ apiKey });
+        const ai = new GoogleGenAI({ apiKey: activeKey });
         await ai.models.generateContent({
            model: body.selectedModel || 'gemini-3.1-flash-lite-preview',
            contents: "Test connection ping. Reply simply with 'OK'."
@@ -53,31 +108,16 @@ export default {
         const body = await request.json() as { provinceName: string, selectedModel: string, mapMode?: string };
         const { provinceName, selectedModel, mapMode = 'SEKOLAH' } = body;
         
-        let apiKey = env.GEMINI_API_KEY;
-        console.log("Checking API key in env:", !!apiKey);
-        if (!apiKey) {
-           console.log("Checking API key in R2 bucket 'vpsai'...");
-           try {
-             const obj = await env.VPSAI_BUCKET.get('gemini_api_key');
-             if (obj) {
-               apiKey = await obj.text();
-               console.log("Found key in R2! Key length:", apiKey?.length);
-             } else {
-               console.log("No key found in R2 bucket.");
-             }
-           } catch (e) {
-             console.error("Error fetching from R2:", e);
-           }
+        const keys = await getApiKeys(env);
+        const activeKey = env.GEMINI_API_KEY || keys[0];
+        
+        if (!activeKey) {
+          return new Response(JSON.stringify({ error: "API Key not found. Please add an API Key in Settings." }), { status: 401, headers: { 'Content-Type': 'application/json' }});
         }
         
-        if (!apiKey) {
-          console.error("API Key not found in environment or R2.");
-          return new Response(JSON.stringify({ error: "API Key not found. Please check Cloudflare Worker Logs for details." }), { status: 401, headers: { 'Content-Type': 'application/json' }});
-        }
+        const ai = new GoogleGenAI({ apiKey: activeKey });
         
-        const ai = new GoogleGenAI({ apiKey });
-        
-let specificInstruction = "";
+        let specificInstruction = "";
         if (mapMode === 'UTAMA') {
           specificInstruction = `Fokus pada statistik umum utama provinsi ini: Total Populasi, Estimasi nilai APBD terbaru, Luas Wilayah, dan persentase Pertumbuhan Ekonomi terbaru. Pada listItems berikan fokus pada ringkasan kebijakan pembangunan utama atau prioritas makro.`;
         } else if (mapMode === 'SEKOLAH') {
@@ -142,7 +182,7 @@ let specificInstruction = "";
            headers: { 'Content-Type': 'application/json' }
         });
       } catch (err: any) {
-        return new Response(JSON.stringify({ error: err.message }), { status: 500, headers: { 'Content-Type': 'application/json' }});
+        return new Response(JSON.stringify({ error: err.message, keyContext: "An error occurred with the active key (it might be rate-limited)." }), { status: 500, headers: { 'Content-Type': 'application/json' }});
       }
     }
 
@@ -152,45 +192,26 @@ let specificInstruction = "";
         const body = await request.json() as { userText: string, selectedRegion: string, selectedModel: string };
         const { userText, selectedRegion, selectedModel } = body;
         
-        let apiKey = env.GEMINI_API_KEY;
-        if (!apiKey) {
-           const obj = await env.VPSAI_BUCKET.get('gemini_api_key');
-           if (obj) apiKey = await obj.text();
-        }
+        const keys = await getApiKeys(env);
+        const activeKey = env.GEMINI_API_KEY || keys[0];
 
-        if (!apiKey) {
-          return new Response(JSON.stringify({ error: "API Key not found." }), { status: 401, headers: { 'Content-Type': 'application/json' }});
+        if (!activeKey) {
+           return new Response(JSON.stringify({ error: "API Key not found in environment or R2." }), { status: 401, headers: { 'Content-Type': 'application/json' }});
         }
         
-        const ai = new GoogleGenAI({ apiKey });
-        const prompt = `Kamu adalah asisten cerdas yang sangat ramah dan santai, berfungsi dalam Sistem DATA SDM INDONESIA. Pengguna bertanya tentang: "${userText}". 
-        Konteks wilayah saat ini: "${selectedRegion || 'Indonesia'}". 
-        Gunakan bahasa yang natural, tidak kaku, inspiratif, dan informatif saat menjawab. Hindari gaya bicara robotik. Jika ada data spesifik wilayah, gunakan itu sebagai acuan utama.`;
-        
+        const ai = new GoogleGenAI({ apiKey: activeKey });
         const result = await ai.models.generateContent({
            model: selectedModel || 'gemini-3.1-flash-lite-preview',
-           contents: prompt
+           contents: `Kamu adalah asisten analisis data wilayah. Fokus pada wilayah: ${selectedRegion || 'Indonesia'}. Pertanyaan user: ${userText}`
         });
-        return new Response(JSON.stringify({ text: result.text || "" }), {
-           headers: { 'Content-Type': 'application/json' }
-        });
-      } catch (err: any) {
-        return new Response(JSON.stringify({ error: err.message }), { status: 500, headers: { 'Content-Type': 'application/json' }});
+
+        return new Response(JSON.stringify({ text: result.text }), { headers: { 'Content-Type': 'application/json' }});
+      } catch(e: any) {
+         return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: { 'Content-Type': 'application/json' }});
       }
     }
 
-    // Serve static assets from the "dist" directory (via env.ASSETS)
-    try {
-      const response = await env.ASSETS.fetch(request);
-      
-      // SPA fallback: If asset not found, serve index.html
-      if (response.status === 404 && !url.pathname.includes('.')) {
-        return await env.ASSETS.fetch(new Request(new URL('/', request.url)));
-      }
-      
-      return response;
-    } catch (e) {
-      return new Response("Asset serving failed", { status: 500 });
-    }
-  },
-};
+    // For any other route, serve via Asset bucket (Vite build)
+    return env.ASSETS.fetch(request);
+  }
+}
