@@ -73,6 +73,11 @@ export default function App() {
   const [isChatLoading, setIsChatLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('Network Map');
   const [mapMode, setMapMode] = useState('UTAMA');
+  const mapModeRef = useRef(mapMode);
+
+  useEffect(() => {
+    mapModeRef.current = mapMode;
+  }, [mapMode]);
 
   // --- Settings & Sidebar Resize ---
   const [isNavOpen, setIsNavOpen] = useState(false);
@@ -235,7 +240,15 @@ export default function App() {
     onRegionClick(regionName);
   };
 
-  const fetchRegionalInfo = async (provinceName: string) => {
+  const handleMapModeChange = (newMode: string) => {
+    setMapMode(newMode);
+    mapModeRef.current = newMode;
+    if (selectedRegion) {
+      fetchRegionalInfo(selectedRegion, newMode);
+    }
+  };
+
+  const fetchRegionalInfo = async (provinceName: string, overrideMode?: string) => {
     setIsLoading(true);
     setAiData(null);
     setIsSidebarOpen(true);
@@ -244,7 +257,7 @@ export default function App() {
       const response = await fetch('/api/region', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ provinceName, selectedModel, mapMode })
+        body: JSON.stringify({ provinceName, selectedModel, mapMode: overrideMode || mapModeRef.current })
       });
       
       const dataStr = await response.text();
@@ -536,22 +549,22 @@ export default function App() {
            {/* Overlay HUD controls */}
            <div className="absolute bottom-6 left-2 right-2 md:left-auto md:right-6 mx-auto w-full max-w-[95%] md:w-auto md:max-w-none z-40 grid grid-cols-3 gap-1.5 md:gap-2">
              <MapBtn 
-                label="Utama" active={mapMode === 'UTAMA'} onClick={() => setMapMode('UTAMA')} 
+                label="Utama" active={mapMode === 'UTAMA'} onClick={() => handleMapModeChange('UTAMA')} 
                 activeClass="bg-blue-600 border-blue-500 text-white shadow-blue-600/20" />
              <MapBtn 
-                label="Sekolah" active={mapMode === 'SEKOLAH'} onClick={() => setMapMode('SEKOLAH')} 
+                label="Sekolah" active={mapMode === 'SEKOLAH'} onClick={() => handleMapModeChange('SEKOLAH')} 
                 activeClass="bg-rose-600 border-rose-500 text-white shadow-rose-600/20" />
              <MapBtn 
-                label="Kota" active={mapMode === 'KOTA'} onClick={() => setMapMode('KOTA')} 
+                label="Kota" active={mapMode === 'KOTA'} onClick={() => handleMapModeChange('KOTA')} 
                 activeClass="bg-emerald-600 border-emerald-500 text-white shadow-emerald-600/20" />
              <MapBtn 
-                label="Kabupaten" active={mapMode === 'KABUPATEN'} onClick={() => setMapMode('KABUPATEN')} 
+                label="Kabupaten" active={mapMode === 'KABUPATEN'} onClick={() => handleMapModeChange('KABUPATEN')} 
                 activeClass="bg-amber-600 border-amber-500 text-white shadow-amber-600/20" />
              <MapBtn 
-                label="Kecamatan" active={mapMode === 'KECAMATAN'} onClick={() => setMapMode('KECAMATAN')} 
+                label="Kecamatan" active={mapMode === 'KECAMATAN'} onClick={() => handleMapModeChange('KECAMATAN')} 
                 activeClass="bg-indigo-600 border-indigo-500 text-white shadow-indigo-600/20" />
              <MapBtn 
-                label="Kebijakan Aneh" active={mapMode === 'KEBIJAKAN ANEH'} onClick={() => setMapMode('KEBIJAKAN ANEH')} 
+                label="Kebijakan Aneh" active={mapMode === 'KEBIJAKAN ANEH'} onClick={() => handleMapModeChange('KEBIJAKAN ANEH')} 
                 activeClass="bg-fuchsia-600 border-fuchsia-500 text-white shadow-fuchsia-600/20" />
            </div>
 
